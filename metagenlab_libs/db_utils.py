@@ -3,6 +3,8 @@ import sys
 
 from BioSQL import BioSeqDatabase
 from Bio import SeqIO
+
+from Bio.Seq import Seq
 from Bio.SeqUtils import GC
 
 import sqlite3
@@ -417,6 +419,32 @@ class DB:
         )
         self.server.adaptor.execute(sql)
 
+    def create_pfam_def_table(self, entries):
+        sql = (
+            "CREATE TABLE pfam_table( "
+            "pfam_id INTEGER, definition TEXT, "
+            "PRIMARY KEY(pfam_id));"
+        )
+        self.server.adaptor.execute(sql)
+        self.load_data_into_table("pfam_table", entries)
+        sql = (
+            "CREATE INDEX pfam_table_idx ON pfam_table(pfam_id);"
+        )
+        self.server.adaptor.execute(sql)
+
+    def create_pfam_hits_table(self):
+        sql = (
+            "CREATE TABLE pfam_hits( "
+            "hsh INTEGER, pfam_id INTEGER, start INTEGER, end INTEGER,"
+            "PRIMARY KEY(hsh, pfam_id, start, end) "
+            ");"
+        )
+        self.server.adaptor.execute(sql)
+        sql = (
+            "CREATE INDEX pfam_hits_idx ON pfam_hits(hsh);"
+            "CREATE INDEX pfam_hits_pfam ON pfam_hits(pfam_id)"
+        )
+        self.server.adaptor.execute(sql)
 
     def get_all_modules_definition(self, allow_signature=False):
         where = ""
@@ -632,64 +660,98 @@ class DB:
         return hsh_results
 
 
-    # NOTE:
-    # All those get_*_hits could be improved in several ways:
-    #  - probably code refactoring: since the code is quite similar
-    #    it may be possible to factor out the redundant code
-    #  - when querying for seqids, two many joins are being performed
-    #    it may be worth it to simplify this
-    def get_ko_hits(self, ids, search_on="taxid", keep_taxid=False):
+    def gen_ko_where_clause(self, search_on, entries):
+        entries = self.gen_placeholder_string(entries)
+        if search_on=="seqid":
+            where_clause = f" hsh.seqid IN ({entries}) "
+        elif search_on=="ko":
+            where_clause = f" hit.ko_id IN ({entries}) "
+        elif search_on=="taxid":
+            where_clause = f" entry.taxon_id IN ({entries}) "
+        else:
+            raise RuntimeError(f"Searching on {search_on} is not supported")
+
+        return where_clause
+
+    def get_ko_hits(self, ids, search_on="taxid",
+            keep_taxid=False, plasmids=None, indexing="taxid"):
         """
         Note: if search_on = ko, only the seqid are returned by default, if the keep_taxids
         is set, taxid are returned in an additional column.
         """
 
-        prot_query = self.gen_placeholder_string(ids)
+        where_clause = self.gen_ko_where_clause(search_on, ids)
 
-        header      = None
-        select      = "SELECT seqid.seqfeature_id, hit.ko_id "
-        group_by    = ""
-        search_term = ""
-        if search_on == "seqid":
-            search_term = "seqid.seqfeature_id"
-            header      = ["seqid", "ko"]
-        elif search_on == "taxid":
-            select      = "SELECT entry.taxon_id, hit.ko_id, COUNT(*) "
-            search_term = "entry.taxon_id"
-            group_by    = "GROUP BY entry.taxon_id, hit.ko_id "
-            header      = ["taxid", "ko", "count"]
-        elif search_on == "ko":
-            search_term = "hit.ko_id"
-            header      = ["seqid", "ko"]
+        header = None
+        select = "SELECT seqid.seqfeature_id, hit.ko_id "
+        group_by = ""
+        if indexing == "seqid":
+            select =  "seqid.seqfeature_id, hit.ko_id "
+            header = ["seqid", "ko"]
+        elif indexing == "taxid":
+            select = "entry.taxon_id, hit.ko_id, COUNT(*) "
+            group_by = "GROUP BY entry.taxon_id, hit.ko_id "
+            header = ["taxid", "ko", "count"]
         else:
-            raise RuntimeError(f"Searching on {search_on} not supported")
+            raise RuntimeError(f"Indexing by {search_on} not supported")
 
-        if keep_taxid and not search_on=="taxid":
+        if keep_taxid and not indexing=="taxid":
             select += ", entry.taxon_id "
             header.append("taxid")
         elif keep_taxid:
             raise RuntimeError(("Are you mocking me? Taxid is already returned! "
                 "Please remove this pesky keep_taxid flag or use another search term!"))
 
+        plasmid_join = ""
+        if not plasmids is None:
+            select += ", CAST(is_plasmid.value AS int) "
+            subclause = self.gen_ko_where_clause(search_on, plasmids)
+            where_clause = (
+                    f"({where_clause} AND is_plasmid.value=0) "
+                    f" OR ({subclause} AND is_plasmid.value=1)"
+            )
+            plasmid_join = (
+                "INNER JOIN bioentry_qualifier_value AS is_plasmid ON "
+                "  is_plasmid.bioentry_id=entry.bioentry_id "
+                "INNER JOIN term AS plasmid_term ON plasmid_term.term_id=is_plasmid.term_id "
+                "  AND plasmid_term.name=\"plasmid\""
+            )
+            if indexing!="seqid":
+                group_by += ", CAST(is_plasmid.value AS int)"
+            header.append("plasmid")
+
         query = (
-            f"{select}"
+            f"SELECT {select}"
             "FROM bioentry AS entry "
             "INNER JOIN seqfeature AS seqid ON seqid.bioentry_id=entry.bioentry_id "
             "INNER JOIN sequence_hash_dictionnary AS hsh ON hsh.seqid = seqid.seqfeature_id "
             "INNER JOIN ko_hits AS hit ON hit.hsh=hsh.hsh "
-            f"WHERE {search_term} IN ({prot_query}) "
+            f"{plasmid_join}"
+            f"WHERE {where_clause} "
             f"{group_by};"
         )
-        results = self.server.adaptor.execute_and_fetchall(query, ids)
+        all_ids = ids
+        if not plasmids is None:
+            all_ids += plasmids
+        results = self.server.adaptor.execute_and_fetchall(query, all_ids)
 
         df = DB.to_pandas_frame(results, header)
         if df.empty:
             return df
 
-        if search_on=="taxid":
-            df = df.set_index(["taxid", "ko"]).unstack(level=0, fill_value=0)
-            df.columns = [col for col in df["count"].column.values]
-        elif search_on=="seqid" or search_on=="ko":
+        if indexing=="taxid":
+            index = ["taxid", "ko"]
+            if not plasmids is None:
+                index += ["plasmid"]
+            df = df.set_index(index).unstack(level=0, fill_value=0)
+
+            if not plasmids is None:
+                return df.unstack(level=1, fill_value=0)
+            else:
+                if not plasmids is None:
+                    raise RuntimeError("Not implemented yet")
+                df.columns = [col for col in df["count"].columns.values]
+        elif indexing=="seqid":
             df = df.set_index(["seqid"])
         return df
 
@@ -1143,6 +1205,7 @@ class DB:
         values = self.server.adaptor.execute_and_fetchall(sql)
         return values[0][0]
 
+
     def get_bioentry_id_for_record(self, record):
         locus_tag = record["gene"]["locus_tag"]
         sql = (
@@ -1152,6 +1215,7 @@ class DB:
         )
         results = self.server.adaptor.execute_and_fetchall(sql)
         return results[0][0]
+
 
 
     def load_filenames(self, data):
@@ -1171,53 +1235,6 @@ class DB:
         self.load_data_into_table("genome_summary", data)
 
 
-    # Optional arguments: this function will return all cog counts 
-    # grouped by bioentry and cog function, except one of the following argument is passed
-    #  - bioentry_ids : restrict the query to a subset of bioentries
-    #  - taxon_ids : restrict the query to the bioentries whose taxid matches those in this list
-    def get_cog_count_for_genomes(self, bioentry_ids=None, taxon_ids=None):
-        additional_query = ""
-
-        if bioentry_ids != None and taxon_ids != None:
-            raise RuntimeError("For the moment, cannot have both bioentry_ids and taxon_ids")
-
-        if bioentry_ids != None:
-            # to test
-            condition = ", ".join([str(bid) for bid in bioentry_ids])
-            additional_query = f" WHERE entry.bioentry_id IN ({condition}) "
-
-        if taxon_ids != None:
-            # to test
-            condition = ", ".join([str(tid) for tid in taxon_ids])
-            additional_query = (
-                " INNER JOIN taxon AS t ON t.taxon_id = entry.taxon_id "
-                f" WHERE t.ncbi_taxon_id IN ({condition})"
-            )
-
-        query = (
-            "SELECT entry.bioentry_id, cog.function, MIN(hits.evalue)"
-            " FROM cog_hits AS hits "
-            " INNER JOIN sequence_hash_dictionnary AS seq ON seq.hsh = hits.hsh "
-            " INNER JOIN cog_names AS cog ON cog.cog_id = hits.cog_id "
-            " INNER JOIN seqfeature AS fet ON fet.seqfeature_id = seq.seqid "
-            " INNER JOIN bioentry AS entry ON fet.bioentry_id = entry.bioentry_id "
-            f"{additional_query}"
-            " GROUP BY fet.seqfeature_id;"
-        )
-
-        results = self.server.adaptor.execute_and_fetchall(query)
-        hsh_results = {}
-        for line in results:
-            bioentry = line[0]
-            func = line[1]
-            if bioentry in hsh_results:
-                cnt = hsh_results[bioentry].get(func, 0)
-                hsh_results[bioentry][func] = cnt+1
-            else:
-                hsh_results[bioentry] = {func: 1}
-        return hsh_results
-
-
     def get_cog_summaries(self, cog_ids, only_cog_desc=False, as_df=False):
         ids = ",".join(["?"] * len(cog_ids))
         query = (
@@ -1232,7 +1249,7 @@ class DB:
                 hsh_results[line[0]] = (line[1], line[2])
             return hsh_results
         elif only_cog_desc:
-            return DB.to_pandas_frame(results, ["cog", "function", "description"])
+            return DB.to_pandas_frame(results, ["cog", "function", "description"]).set_index(["cog"])
 
         funcs = "SELECT function, description FROM cog_functions;"
         functions = self.server.adaptor.execute_and_fetchall(funcs)
@@ -1285,6 +1302,21 @@ class DB:
             raise RuntimeError("No such entry")
         return values[0][0]
 
+    
+    def get_bioentry(self, from_val, val_type="seqid"):
+        if val_type != "seqid":
+            raise Exception("For now, only seqid indexing is supported")
+        # may be extended in the future for other types of indexing
+
+        sql = (
+            "SELECT bioentry_id "
+            "FROM seqfeature "
+            "WHERE seqfeature_id = ?;"
+        )
+        values = self.server.adaptor.execute_and_fetchall(sql, [from_val])
+
+        # assumes result has been found
+        return values[0][0]
 
 
     def get_seqid_in_neighborhood(self, bioentry_id, start_loc, stop_loc):
@@ -1299,6 +1331,15 @@ class DB:
         if results==None:
             return []
         return [line[0] for line in results]
+
+
+    def get_DNA_sequence(self, bioentry_id, alphabet="dna"):
+        query = (
+            "SELECT seq FROM biosequence WHERE bioentry_id=? AND alphabet = ?;"
+        )
+
+        results = self.server.adaptor.execute_and_fetchall(query, [bioentry_id, alphabet])
+        return Seq(results[0][0])
 
 
     # Note: ordering by seqid makes it faster to assemble informations
@@ -1324,32 +1365,43 @@ class DB:
             hsh_results[seqid] = [strand, start, end]
         return hsh_results
     
+
     # Returns the seqid, locus tag, protein id, product and gene for a given
     # list of seqids, ordered by seqids
-    #
-    # WARNING: fam_cog relies on the result being ordered by seqfeature_id
-    def get_proteins_info(self, seqids, bioentries=None):
-        seqids_query = ",".join(["?"] * len(seqids))
+    def get_proteins_info(self, ids, search_on="seqid", as_df=False):
+        entries = self.gen_placeholder_string(ids)
         term_names = ["locus_tag", "protein_id", "gene", "product"]
-        term_names_query = ",".join([f"\"{name}\"" for name in term_names])
+        term_names_query = ",".join(f"\"{name}\"" for name in term_names)
 
-        if bioentries!=None:
-            entries = ",".join(str(entry) for entry in bioentries)
+        where = ""
+        if search_on=="taxid":
             sel = (
-                f"INNER JOIN seqfeature AS seq ON seq.seqfeature_id = v.seqfeature_id "
-                f" AND seq.bioentry_id IN ({entries}) "
+                "INNER JOIN bioentry AS entry ON seq.bioentry_id=entry.bioentry_id "
             )
-        else:
+            where = f" entry.taxon_id IN ({entries})"
+        elif search_on=="seqid":
             sel = ""
+            where = f"v.seqfeature_id IN ({entries})"
+        else:
+            raise RuntimeError("Searching is only possible on seqid and taxid")
+
         query = (
             "SELECT v.seqfeature_id, t.name, v.value "
             "FROM seqfeature_qualifier_value AS v "
             "INNER JOIN term AS t ON t.term_id = v.term_id "
+            "INNER JOIN seqfeature AS seq ON seq.seqfeature_id = v.seqfeature_id "
+            "INNER JOIN term AS cds_term ON seq.type_term_id=cds_term.term_id "
+            " AND cds_term.name=\"CDS\" "
             f"{sel}"
-            f"WHERE v.seqfeature_id IN ({seqids_query}) AND name IN ({term_names_query}) "
-            "ORDER BY v.seqfeature_id ASC;"
+            f"WHERE {where} AND t.name IN ({term_names_query});"
         )
-        results = self.server.adaptor.execute_and_fetchall(query, seqids)
+        results = self.server.adaptor.execute_and_fetchall(query, ids)
+
+        if as_df:
+            df = DB.to_pandas_frame(results, ["seqid", "name", "value"])
+            df = df.set_index(["seqid", "name"]).unstack(level="name")
+            df.columns = [col for col in df.value.columns.values]
+            return df
 
         hsh_results = {}
         for line in results:
@@ -1360,6 +1412,7 @@ class DB:
                 hsh_results[seqid] = [None]*len(term_names)
             hsh_results[seqid][term_names.index(term_name)] = value
         return hsh_results
+
 
     def get_organism(self, ids, as_hash=True, id_type="seqid"):
         seqids_query = ",".join(["?"] * len(ids))
@@ -1444,14 +1497,15 @@ class DB:
         return df.set_index(["seqid"])
 
 
-    def get_og_count(self, lookup_terms, search_on="taxid", diff_plasmid=False, keep_taxid=False):
+    def get_og_count(self, lookup_terms, search_on="taxid", plasmids=None, keep_taxid=False):
         """
         This function returns a pandas dataframe containing the orthogroup
         count for a set of taxon_ids. The user can differentiate between the chromosome
-        and the plasmid. TODO: The plasmid part is to be implemented.
+        and the plasmid.
 
-        diff_plasmid: should chromsome and plasmid be considered separately. If set to True, the count
-                for chromosome and plasmids will be done separately.
+        plasmids: if set to None, the function will not differentiate between
+            plasmids and chromosomes. Otherwise, should contain a list of taxids whose plasmids
+            will be taken into account in the search.
         lookup_term: the terms that will be search. Either a list of taxids, of orthogroup or of seqids.
         search_on: can be either orthogroup, seqid or taxid. Specifies what lookup_term is.
         keep_taxid: for queries using the seqid lookup term, also return the taxid in the results
@@ -1460,15 +1514,38 @@ class DB:
         If the flag is set, MultiIndex(taxid, is_plasmid). If it is not set Index(taxid)
         """
 
-        group_by = ""
-        select   = "SELECT entry.taxon_id, orthogroup, COUNT(*) "
-        group_by = "GROUP BY entry.taxon_id, orthogroup"
-        if search_on=="taxid":
-            where_clause = "entry.taxon_id"
+        if not plasmids is None and search_on!="taxid":
+            raise RuntimeError("Plasmid search only supported for taxid")
+
+        entries = self.gen_placeholder_string(lookup_terms)
+
+        add_plasmid = ""
+        if not plasmids is None:
+            add_plasmid = "CAST(is_plasmid.value AS int), "
+
+        select   = f"SELECT entry.taxon_id, {add_plasmid} orthogroup, COUNT(*) "
+        group_by = f"GROUP BY entry.taxon_id, {add_plasmid} orthogroup"
+        where_clause = None
+        add_plasmid_join = ""
+        if not plasmids is None:
+            plasmids_placeholder = self.gen_placeholder_string(plasmids)
+            add_plasmid = "is_plasmid.value"
+            add_plasmid_join = (
+                "INNER JOIN bioentry_qualifier_value AS is_plasmid ON "
+                "  is_plasmid.bioentry_id=entry.bioentry_id "
+                "INNER JOIN term AS plasmid_term ON plasmid_term.term_id=is_plasmid.term_id "
+                "  AND plasmid_term.name=\"plasmid\""
+            )
+            where_clause = (
+                f" (entry.taxon_id IN ({entries}) AND is_plasmid.value=0) "
+                f"OR (entry.taxon_id IN ({plasmids_placeholder}) AND is_plasmid.value=1)"
+            )
+        elif search_on=="taxid":
+            where_clause = f"entry.taxon_id IN ({entries})"
         elif search_on=="orthogroup":
-            where_clause = "og.orthogroup"
+            where_clause = f"og.orthogroup IN ({entries})"
         elif search_on=="seqid":
-            where_clause = "feature.seqfeature_id "
+            where_clause = f"feature.seqfeature_id IN ({entries})"
             select       = "SELECT feature.seqfeature_id, og.orthogroup "
             group_by     = ""
             if keep_taxid:
@@ -1476,19 +1553,24 @@ class DB:
         else:
             raise RuntimeError(f"Unsupported search {search_on}, must use orthogroup, bioentry or seqid")
 
-        entries = ",".join("?" for i in lookup_terms)
         query = (
             f"{select} "
             "FROM bioentry AS entry "
-            "INNER JOIN seqfeature AS feature ON entry.bioentry_id = feature.bioentry_id " 
+            "INNER JOIN seqfeature AS feature ON entry.bioentry_id = feature.bioentry_id "
             "INNER JOIN og_hits AS og ON og.seqid = feature.seqfeature_id "
-            f"WHERE {where_clause} IN ({entries}) "
+            f"{add_plasmid_join} "
+            f"WHERE {where_clause} "
             f"{group_by};"
         )
-        results = self.server.adaptor.execute_and_fetchall(query, lookup_terms)
+        all_terms = lookup_terms
+        if not plasmids is None:
+            all_terms = lookup_terms + plasmids
+        results = self.server.adaptor.execute_and_fetchall(query, all_terms)
 
         header = None
-        if search_on=="taxid" or search_on=="orthogroup":
+        if not plasmids is None:
+            header = ["taxid", "plasmid", "orthogroup", "count"]
+        elif search_on=="taxid" or search_on=="orthogroup":
             header = ["taxid", "orthogroup", "count"]
         elif search_on=="seqid":
             header = ["seqid", "orthogroup"]
@@ -1498,8 +1580,10 @@ class DB:
         df = DB.to_pandas_frame(results, header)
         if len(df.index) == 0:
             return df
-
-        if search_on=="taxid" or search_on=="orthogroup":
+        if not plasmids is None:
+            df = df.set_index(["taxid", "plasmid", "orthogroup"]).unstack(level=0, fill_value=0)
+            return df.unstack(level=0, fill_value=0)
+        elif search_on=="taxid" or search_on=="orthogroup":
             df = df.set_index(["taxid", "orthogroup"]).unstack(level=0, fill_value=0)
             df.columns = [col for col in df["count"].columns.values]
         elif search_on=="seqid":
@@ -1589,6 +1673,119 @@ class DB:
         return hsh_results
 
 
+    def get_pfam_def(self, pfam_ids):
+        plcd = self.gen_placeholder_string(pfam_ids)
+
+        query = (
+            "SELECT pfam_id, definition "
+            "FROM pfam_table "
+            f"WHERE pfam_id IN ({plcd});"
+        )
+        results = self.server.adaptor.execute_and_fetchall(query, pfam_ids)
+        return DB.to_pandas_frame(results, ["pfam", "def"]).set_index(["pfam"])
+
+
+    def gen_pfam_where_clause(self, search_on, entries):
+        entries = self.gen_placeholder_string(entries)
+
+        if search_on=="bioentry":
+            where_clause = f" entry.bioentry_id IN ({entries}) "
+        elif search_on=="seqid":
+            where_clause = f" hsh.seqid IN ({entries}) "
+        elif search_on=="pfam":
+            where_clause = f" pfam.pfam_id IN ({entries}) "
+        elif search_on=="taxid":
+            where_clause = f" entry.taxon_id IN ({entries}) "
+        else:
+            raise RuntimeError(f"Searching on {search_on} is not supported")
+        return where_clause
+
+
+    def get_pfam_hits_info(self, seqids):
+        plcd = self.gen_placeholder_string(seqids)
+        query = (
+            "SELECT hsh.seqid, pfam.pfam_id, pfam.start, pfam.end "
+            "FROM sequence_hash_dictionnary AS hsh "
+            "INNER JOIN pfam_hits AS pfam ON hsh.hsh=pfam.hsh "
+            f"WHERE hsh.seqid IN ({plcd});"
+        )
+        results = self.server.adaptor.execute_and_fetchall(query, seqids)
+        return DB.to_pandas_frame(results, ["seqid", "pfam", "start", "end"])
+
+
+    def get_pfam_hits(self, ids, indexing="taxid", search_on="taxid", plasmids=None, keep_taxid=False):
+
+        where_clause = self.gen_pfam_where_clause(search_on, ids)
+        if indexing=="seqid":
+            index = "seqid.seqfeature_id"
+            if keep_taxid:
+                index += ", entry.taxon_id "
+        elif indexing=="bioentry":
+            index = "entry.bioentry_id"
+        elif indexing=="taxid":
+            index = "entry.taxon_id"
+        else:
+            raise RuntimeError(f"Indexing method not supported: {indexing}")
+        plasmid_join = ""
+
+        query = (
+            f"SELECT {index}, pfam.pfam_id, COUNT(*) "
+            "FROM bioentry AS entry "
+            "INNER JOIN seqfeature AS seqid ON seqid.bioentry_id = entry.bioentry_id "
+            "INNER JOIN sequence_hash_dictionnary AS hsh ON seqid.seqfeature_id = hsh.seqid "
+            "INNER JOIN pfam_hits AS pfam ON pfam.hsh = hsh.hsh "
+            f"{plasmid_join}"
+            f"WHERE {where_clause} "
+            f"GROUP BY {index}, pfam.pfam_id;"
+        )
+        all_ids = ids
+        if not plasmids is None:
+            all_ids += plasmids
+        results = self.server.adaptor.execute_and_fetchall(query, all_ids)
+
+        if indexing=="taxid" or indexing=="bioentry":
+            column_names = [indexing, "pfam", "count"]
+            index = [indexing, "pfam"]
+            if not plasmids is None:
+                column_names.insert(1, "plasmid")
+                index.insert(1, "plasmid")
+            df = DB.to_pandas_frame(results, column_names)
+            df = df.set_index(index).unstack(level=0, fill_value=0)
+
+            if not plasmids is None:
+                return df.unstack(level=0, fill_value=0)
+            else:
+                df.columns = [col for col in df["count"].columns.values]
+        elif indexing=="seqid":
+            if not plasmids is None:
+                raise RuntimeError("Not implemented for now")
+            header = ["seqid", "pfam"]
+            if keep_taxid:
+                header.append("taxid")
+                results = ((seqid, pfam, taxid) for seqid, taxid, pfam, count in results)
+            else:
+                results = ((seqid, pfam) for seqid, pfam, count in results)
+            df = DB.to_pandas_frame(results, header)
+            df = df.set_index(["seqid"])
+        return df
+
+
+    def gen_cog_where_clause(self, search_on, entries):
+        entries = self.gen_placeholder_string(entries)
+
+        if search_on=="bioentry":
+            where_clause = f" entry.bioentry_id IN ({entries}) "
+        elif search_on=="seqid":
+            where_clause = f" hsh.seqid IN ({entries}) "
+        elif search_on=="cog":
+            where_clause = f" cogs.cog_id IN ({entries}) "
+        elif search_on=="taxid":
+            where_clause = f" entry.taxon_id IN ({entries}) "
+        else:
+            raise RuntimeError(f"Searching on {search_on} is not supported")
+        return where_clause
+
+
     # Get all cog hits for a given list of bioentries
     # The results are either indexed by the bioentry or by the seqid
     # NOTE: if indexing as bioentry or taxon_id, will return a dataframe of the form
@@ -1601,20 +1798,10 @@ class DB:
     #   seqid1 cog1
     #   seqid2 cog2
     #   seqid3 cog3
-    def get_cog_hits(self, ids, indexing="bioentry", search_on="bioentry", keep_taxid=False):
-        entries = self.gen_placeholder_string(ids)
+    def get_cog_hits(self, ids, indexing="bioentry", search_on="bioentry",
+            keep_taxid=False, plasmids=None):
 
-        if search_on=="bioentry":
-            where_clause = f" entry.bioentry_id IN ({entries}) "
-        elif search_on=="seqid":
-            where_clause = f" hsh.seqid IN ({entries}) "
-        elif search_on=="cog":
-            where_clause = f" cogs.cog_id IN ({entries}) "
-        elif search_on=="taxid":
-            where_clause = f" entry.taxon_id IN ({entries}) "
-        else:
-            raise RuntimeError(f"Searching on {search_on} is not supported")
-
+        where_clause = self.gen_cog_where_clause(search_on, ids)
         if indexing=="seqid":
             index = "seqid.seqfeature_id"
             if keep_taxid:
@@ -1626,22 +1813,53 @@ class DB:
         else:
             raise RuntimeError(f"Indexing method not supported: {indexing}")
 
+        plasmid_join = ""
+        if not plasmids is None:
+            index += ", CAST(is_plasmid.value AS int) "
+            subclause = self.gen_cog_where_clause(search_on, plasmids)
+            where_clause = (
+                    f"({where_clause} AND is_plasmid.value=0) "
+                    f" OR ({subclause} AND is_plasmid.value=1)"
+            )
+            plasmid_join = (
+                "INNER JOIN bioentry_qualifier_value AS is_plasmid ON "
+                "  is_plasmid.bioentry_id=entry.bioentry_id "
+                "INNER JOIN term AS plasmid_term ON plasmid_term.term_id=is_plasmid.term_id "
+                "  AND plasmid_term.name=\"plasmid\""
+            )
+
         query = (
             f"SELECT {index}, cogs.cog_id, COUNT(*) "
             "FROM bioentry AS entry "
             "INNER JOIN seqfeature AS seqid ON seqid.bioentry_id = entry.bioentry_id "
             "INNER JOIN sequence_hash_dictionnary AS hsh ON seqid.seqfeature_id = hsh.seqid "
             "INNER JOIN cog_hits AS cogs ON cogs.hsh = hsh.hsh "
+            f"{plasmid_join}"
             f"WHERE {where_clause} "
             f"GROUP BY {index}, cogs.cog_id;"
         )
-        results = self.server.adaptor.execute_and_fetchall(query, ids)
+        all_ids = ids
+        if not plasmids is None:
+            all_ids += plasmids
+        results = self.server.adaptor.execute_and_fetchall(query, all_ids)
+
+        # ugly code, open for improvements
         if indexing=="taxid" or indexing=="bioentry":
             column_names = [indexing, "cog", "count"]
+            index = [indexing, "cog"]
+            if not plasmids is None:
+                column_names.insert(1, "plasmid")
+                index.insert(1, "plasmid")
             df = DB.to_pandas_frame(results, column_names)
-            df = df.set_index([indexing, "cog"]).unstack(level=0, fill_value=0)
-            df.columns = [col for col in df["count"].columns.values]
+            df = df.set_index(index).unstack(level=0, fill_value=0)
+
+            if not plasmids is None:
+                return df.unstack(level=0, fill_value=0)
+            else:
+                df.columns = [col for col in df["count"].columns.values]
         elif indexing=="seqid":
+            if not plasmids is None:
+                raise RuntimeError("Not implemented for now")
             header = ["seqid", "cog"]
             if keep_taxid:
                 header.append("taxid")
