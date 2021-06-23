@@ -1663,6 +1663,27 @@ class DB:
         return {filename: entry_id for filename, entry_id in results}
 
 
+    def get_taxon_id_to_filenames(self):
+        sql = (
+            f"SELECT filename, taxon_id FROM filenames;"
+        )
+        hsh_entry_to_filenames = {}
+        results = self.server.adaptor.execute_and_fetchall(sql)
+        return {entry_id: filename for filename, entry_id in results}
+
+    def get_bioentry_id_to_plasmid_contigs(self):
+        sql = (
+            "SELECT bioentry_id, accession "
+            "FROM bioentry "
+            "WHERE bioentry_id IN (SELECT bioentry_qualifier_value.bioentry_id "
+            "FROM bioentry_qualifier_value "
+            "WHERE bioentry_qualifier_value.term_id=47 AND bioentry_qualifier_value.value=1) "
+        )
+        bioentry_id_to_plasmid_contigs = {}
+        results = self.server.adaptor.execute_and_fetchall(sql)
+        return {bioentry_id: accession for bioentry_id, accession in results}
+    
+
     def load_chlamdb_config_tables(self, entries):
         sql = (
             "CREATE TABLE biodb_config"
@@ -1732,4 +1753,3 @@ class DB:
     def load_db_from_name(db_name, db_type = "sqlite"):
         params = {"chlamdb.db_type" : db_type, "chlamdb.db_name" : db_name}
         return DB.load_db(db_name, params)
-
