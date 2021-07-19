@@ -1687,7 +1687,10 @@ class DB:
         results = self.server.adaptor.execute_and_fetchall(query, [taxon_id])
         return DB.to_pandas_frame(results, ["bioentry_id", "accession" ,"length", "seq"]).set_index(["bioentry_id"])
     
-    def get_features_location(self, taxon_id, term_names=['CDS']):
+    # return table of all features of a target genome (filter by term name) 
+    # basically the same as get_proteins_info but with rrna and trna
+    # TODO: merge with get_proteins_info
+    def get_features_location(self, taxon_id, term_names=['CDS', 'rRNA', 'tRNA']):
         
         term_names_query = ",".join(f"\"{name}\"" for name in term_names)
         
@@ -1704,15 +1707,13 @@ class DB:
         results = self.server.adaptor.execute_and_fetchall(query, [taxon_id])
         
         df = DB.to_pandas_frame(results, ["bioentry_id", "seqfeature_id", "start_pos", "end_pos", "strand", "term_name", "qualifier_value", "qualifier_name"])
-        #df = df.pivot(values="qualifier_value", index=["bioentry_id", "seqfeature_id", "start_pos", "end_pos", "strand", "term_name", "qualifier_name"], columns=["qualifier_name"])
         df = df.set_index(["bioentry_id", "seqfeature_id", "start_pos", "end_pos", "strand", "term_name", "qualifier_name"]).unstack("qualifier_name")
         df = df.reset_index()
         df.columns = ['_'.join(col).strip('_') for col in df.columns]
-        print("HEAD", df.head())
 
-        # bioentry_id  start_pos  end_pos  strand  gene       locus_tag                             product
+        # bioentry_id  start_pos  end_pos  strand  gene locus_tag product
         df_merged = df[["seqfeature_id", "bioentry_id", "start_pos", "end_pos", "strand", "qualifier_value_gene", "term_name", "qualifier_value_locus_tag", "qualifier_value_product"]]
-    
+        
         return df_merged
         
     def get_identity_closest_homolog(self, reference_taxid, target_taxids):
