@@ -1785,7 +1785,7 @@ class DB:
             #    R1 = re.sub("20210208", "20210208_CleanPlex", row["R1"])
             #    R2 = re.sub("20210208", "20210208_CleanPlex", row["R2"])
             fastq_id = row["fastq_id"]
-            sample_name = f'{row["fastq_prefix"]}_{fastq_id}'
+            sample_name = f'{row["sample_name"]}_{fastq_id}'
             dict_file[sample_name] = {'alt_id': f'Sample_{n+1}',
                                     'read1': R1,
                                     'read2': R2,
@@ -1957,7 +1957,7 @@ def add_analysis_metadata(analysis_id, term, value, update=False):
         
 def create_analysis(fastq_id_list,
                     analysis_description,
-                    reference_fastq_id_list = [],
+                    analysis_metadata = [],
                     subproject_id=False,
                     workflow_name="Airflow_epidemiology"):
                 
@@ -1988,10 +1988,11 @@ def create_analysis(fastq_id_list,
     desc = AnalysisMetadata(term=term, analysis=analysis, value=analysis_description)
     desc.save()
     
-    if len(reference_fastq_id_list) > 0:
-        term_ref_genome = Term.objects.get_or_create(name="reference_genome")[0]
-        for ref_genome in reference_fastq_id_list:
-            m = AnalysisMetadata(term=term_ref_genome, analysis=analysis, value=ref_genome)
+    # add metadata
+    if len(analysis_metadata) > 0:
+        for term_name, value in analysis_metadata:
+            term_ref_genome = Term.objects.get_or_create(name=term_name)[0]
+            m = AnalysisMetadata(term=term_ref_genome, analysis=analysis, value=value)
             m.save()  
     
     # add each fastq to fastq set
