@@ -1889,7 +1889,7 @@ class DB:
             )
             header.append("plasmid")
 
-        header.append("pfam")
+        header.extend(["pfam", "count"])
         query = (
             f"SELECT {index}, pfam.pfam_id, COUNT(*) "
             "FROM bioentry AS entry "
