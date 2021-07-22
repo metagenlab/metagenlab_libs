@@ -38,30 +38,41 @@ def copy_and_compress(source, target, compress_ext):
     '''
     if os.path.isdir(source):
         # list of relative path
+        #print("MAIN DIR:", source)
         complete_file_lst = list_dir(source)
         for filename in complete_file_lst:
             # if directory does not exist, create it
+            #print("filename", filename)
             source_abs_path = os.path.join(source, filename)
             target_abs_path = os.path.join(target, filename)
-            if not os.path.exists(os.path.dirname(target_abs_path)):
-                os.makedirs(os.path.dirname(target_abs_path))
+            dirname = os.path.dirname(target_abs_path)
+            #print("source_abs_path, ", source_abs_path)
+            #print("target_abs_path, ", target_abs_path)
+            #print("dirname--", dirname)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
             # check extension
             extension = filename.split(".")[-1]
             if extension in compress_ext:
                 compress(source_abs_path, target_abs_path)
             else:
                 shutil.copy(source_abs_path, target_abs_path)
+        #print("DONE------------------------------------------")
     else:
-        if not os.path.exists(os.path.dirname(target)):
-            os.makedirs(os.path.dirname(target))
+        print("not a dir")
+        dirname = os.path.dirname(target)
+        print("dirname", dirname)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
         extension = source.split(".")[-1]
         if extension in compress_ext:
             compress(source, target)
         else:
+            print("COPY", source, target)
             shutil.copy(source, target)
 
 
-def clean_species(species_strings):s
+def clean_species(species_string):
     import re 
     # case when fastq file could not be matched to sample table
     if species_string is None:
@@ -125,12 +136,13 @@ def backup_output_files_samples(metadata_name2path_template,
             if not os.path.exists(backup_path_format_absolute):
                 print(f"WARNING: {backup_path_format_absolute} does not exit, skipping" )
                 continue
-
+            
             qc_data.append({"fastq_id": sample["fastq_id"],
                             "metrics_name": metadata_name,
                             "metrics_value": backup_path_format_relative,
                             "pipeline_version": ""})
     for qc in qc_data:
+        print("inserting", analysis_id, qc["fastq_id"], qc["metrics_name"], qc["metrics_value"])
         GEN_DB.add_fastq_metadata(fastq_id=qc["fastq_id"],
                                   term_name=qc["metrics_name"],
                                   value=qc["metrics_value"],
@@ -250,12 +262,13 @@ def write_snakemake_config_file(analysis_name,
         if 'cgMLST' in reference_list:
             ref_list.append("cgMLST")
         
-    print("ref list", ref_list)
+    
     print("additional_args", additional_args)
     with open(os.path.join(run_execution_folder, f'{analysis_name}.config'), 'w') as f:
         # update sample table name
         snakemake_config["local_samples"] = f'{analysis_name}.tsv'
         if reference_list:
+            print("ref list", ref_list)
             snakemake_config["reference"] = f'{",".join(ref_list)}'
         snakemake_config["species"] = f'{scientific_name}'
         if reference_docx:
@@ -291,28 +304,34 @@ def backup(execution_folder,
         # update status
         print("analysis_id", analysis_id)
         gendb_utils.add_analysis_metadata(analysis_id, "airflow_execution_status", "running", update=True)
-
+    
+    print("backup_folder", backup_folder)
+    
     # copy files and folders to backup directory
-    for output in file_or_folder_list:
-        
+    for n, output in enumerate(file_or_folder_list):
+        print("BACKUP LIST", n, output)
+        # list with reference and target path
         if isinstance(output, list):
+            print("LIST...")
             # copy files to specified target directory
-            target_dir = os.path.join(backup_folder,analysis_name, output[1])
+            
             file_list = glob.glob(os.path.join(execution_folder, analysis_name, output[0]))
-            print("file_list", file_list)
-
+            target_dir = os.path.join(backup_folder, analysis_name, output[1])
+            #print("file_list", file_list)
             for one_file in file_list:
-                print("original", one_file)
-                target_abs_path = os.path.join(target_dir, one_file)
-                print("target", target_abs_path)
-                copy_and_compress(original, target_abs_path, compress_ext)
+                #print("original", one_file)
+                target_abs_path = os.path.join(target_dir, os.path.basename(one_file))
+                print("copy---", one_file, target_abs_path)
+                copy_and_compress(one_file, target_abs_path, compress_ext)
                 
         elif isinstance(output, dict):
+            print("DICT...")
+            # more complex copy with renaming
+            # {glob: samples/*/mapping/bwa/*_assembled_genome.bam, regex: .*/samples/(.*)/mapping/bwa/(.*)_assembled_genome.bam, vars: {1: 'sample', 2: 'reference'}, target: "mapping/{sample}-vs-{reference}.bam", term: bam_file}
             import re
             GEN_DB = gendb_utils.DB()
-            # {glob: samples/*/mapping/bwa/*_assembled_genome.bam, regex: .*/samples/(.*)/mapping/bwa/(.*)_assembled_genome.bam, vars: {1: 'sample', 2: 'reference'}, target: "mapping/{sample}-vs-{reference}.bam", term: bam_file}
             file_list = glob.glob(os.path.join(execution_folder, analysis_name, output["glob"]))
-            print("glob file list:", file_list)
+            #print("glob file list:", file_list)
             for one_file in file_list:
                 s = re.search(output["regex"], one_file)
                 term2value = {output["vars"][index]:s.group(index) for index in output["vars"]}
@@ -322,7 +341,7 @@ def backup(execution_folder,
                 # copy file to target location
                 if not os.path.exists(os.path.dirname(target_path_full)):
                     os.makedirs(os.path.dirname(target_path_full))
-                print("cp:", one_file, target_path_full)
+                #print("cp:", one_file, target_path_full)
                 copy_and_compress(one_file, target_path_full, compress_ext)
                 # save path in db
                 if "term" in output:
@@ -332,18 +351,19 @@ def backup(execution_folder,
                                             value=target_format,
                                             analysis_id=analysis_id)
         else:
+            print("MIROR...")
+            # simplest case
             # copy identical path
             output = output.format(analysis_name=analysis_name)
             original = os.path.join(execution_folder, analysis_name, output)
             target = os.path.join(backup_folder, analysis_name, output)
-            print("original", original)
-            print("target", target)
             # copy and compress what can be compressed
             copy_and_compress(original, target, compress_ext)
 
     # save file paths into database
     # can be either nested dictionnaries or a single dictionnary
-    if analysis_name:
+    print("CONF", config, fastq_list)
+    if config:
         if output_selection:
             output_selection = output_selection.split(",")
             metadata_lst = [value for key, value in config["WORKFLOW"][workflow_name]["PIPELINE_OUTPUT"]["ANALYSIS"].items() if key in output_selection]
@@ -362,6 +382,8 @@ def backup(execution_folder,
                                      analysis_id,
                                      backup_folder)
         if fastq_list:
+            print("fastq_list", fastq_list)
+            print("sample_metadata_name2template", sample_metadata_name2template)
             fastq_list = fastq_list.split(",")
             backup_output_files_samples(sample_metadata_name2template, 
                                         fastq_list,
