@@ -826,8 +826,6 @@ class DB:
             if not plasmids is None:
                 return df.unstack(level=1, fill_value=0)
             else:
-                if not plasmids is None:
-                    raise RuntimeError("Not implemented yet")
                 df.columns = [col for col in df["count"].columns.values]
         elif indexing=="seqid":
             df = df.set_index(["seqid"])
@@ -1472,7 +1470,7 @@ class DB:
     # Returns the seqid, locus tag, protein id, product and gene for a given
     # list of seqids
     def get_proteins_info(self, ids, search_on="seqid", as_df=False,
-            to_return=None, inc_non_CDS=False):
+            to_return=None, inc_non_CDS=False, inc_pseudo=False):
         """
         Args:
          - to_return: accepts a list of entries to return for each seqid.
@@ -1497,6 +1495,17 @@ class DB:
                 "OR cds_term.name=\"rRNA\""
             )
 
+        no_pseudo = ""
+        if not inc_pseudo:
+            no_pseudo = (
+                "AND NOT EXISTS ("
+                " SELECT NULL FROM seqfeature_qualifier_value AS cds"
+                " INNER JOIN term AS pseudo_term ON cds.term_id=pseudo_term.term_id "
+                "  AND (pseudo_term.name=\"pseudogene\" OR pseudo_term.name=\"pseudo\") "
+                " WHERE cds.seqfeature_id=seq.seqfeature_id "
+                ")"
+            )
+
         where = ""
         if search_on=="taxid":
             sel = (
@@ -1515,9 +1524,9 @@ class DB:
             "INNER JOIN term AS t ON t.term_id = v.term_id "
             "INNER JOIN seqfeature AS seq ON seq.seqfeature_id = v.seqfeature_id "
             "INNER JOIN term AS cds_term ON seq.type_term_id=cds_term.term_id "
-            f" AND (cds_term.name=\"CDS\" {add_cond})"
+            f" AND (cds_term.name=\"CDS\")"
             f"{sel}"
-            f"WHERE {where} AND t.name IN ({term_names_query});"
+            f"WHERE {where} AND t.name IN ({term_names_query}) {no_pseudo};"
         )
         results = self.server.adaptor.execute_and_fetchall(query, ids)
 
@@ -1825,10 +1834,7 @@ class DB:
 
     def gen_pfam_where_clause(self, search_on, entries):
         entries = self.gen_placeholder_string(entries)
-
-        if search_on=="bioentry":
-            where_clause = f" entry.bioentry_id IN ({entries}) "
-        elif search_on=="seqid":
+        if search_on=="seqid":
             where_clause = f" hsh.seqid IN ({entries}) "
         elif search_on=="pfam":
             where_clause = f" pfam.pfam_id IN ({entries}) "
@@ -1854,18 +1860,36 @@ class DB:
     def get_pfam_hits(self, ids, indexing="taxid", search_on="taxid", plasmids=None, keep_taxid=False):
 
         where_clause = self.gen_pfam_where_clause(search_on, ids)
+        header = []
         if indexing=="seqid":
             index = "seqid.seqfeature_id"
+            header.append("seqid")
             if keep_taxid:
                 index += ", entry.taxon_id "
-        elif indexing=="bioentry":
-            index = "entry.bioentry_id"
+                header.append("taxid")
         elif indexing=="taxid":
+            header.append("taxid")
             index = "entry.taxon_id"
         else:
             raise RuntimeError(f"Indexing method not supported: {indexing}")
-        plasmid_join = ""
 
+        plasmid_join = ""
+        if not plasmids is None:
+            index += ", CAST(is_plasmid.value AS int) "
+            subclause = self.gen_pfam_where_clause(search_on, plasmids)
+            where_clause = (
+                    f"({where_clause} AND is_plasmid.value=0) "
+                    f" OR ({subclause} AND is_plasmid.value=1)"
+            )
+            plasmid_join = (
+                "INNER JOIN bioentry_qualifier_value AS is_plasmid ON "
+                "  is_plasmid.bioentry_id=entry.bioentry_id "
+                "INNER JOIN term AS plasmid_term ON plasmid_term.term_id=is_plasmid.term_id "
+                "  AND plasmid_term.name=\"plasmid\""
+            )
+            header.append("plasmid")
+
+        header.append("pfam")
         query = (
             f"SELECT {index}, pfam.pfam_id, COUNT(*) "
             "FROM bioentry AS entry "
@@ -1881,14 +1905,12 @@ class DB:
             all_ids += plasmids
         results = self.server.adaptor.execute_and_fetchall(query, all_ids)
 
-        if indexing=="taxid" or indexing=="bioentry":
-            column_names = [indexing, "pfam", "count"]
-            index = [indexing, "pfam"]
+        if indexing=="taxid":
+            df_index = [indexing, "pfam"]
             if not plasmids is None:
-                column_names.insert(1, "plasmid")
-                index.insert(1, "plasmid")
-            df = DB.to_pandas_frame(results, column_names)
-            df = df.set_index(index).unstack(level=0, fill_value=0)
+                df_index.insert(1, "plasmid")
+            df = DB.to_pandas_frame(results, header)
+            df = df.set_index(df_index).unstack(level=0, fill_value=0)
 
             if not plasmids is None:
                 return df.unstack(level=0, fill_value=0)
