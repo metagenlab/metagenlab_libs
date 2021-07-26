@@ -31,6 +31,7 @@ class Amplifier:
         self.forward_n_missmatch = None
         self.reverse_n_missmatch = None
         self.start_position = None
+        self.accession = None
         
     def __str__(self,):
         pstr = f'''{self.hit_info}:
@@ -70,7 +71,7 @@ def read_primersearch(handle):
             amplifier = Amplifier()
             record.amplifiers[name].append(amplifier)
         elif line.startswith("\tSequence: "):
-            amplifier.hit_info = line.replace("\tSequence: ", "")
+            amplifier.accession = line.strip().replace("Sequence: ", "")
         elif line.startswith("\tAmplimer length: "):
             length = line.split()[-2]
             amplifier.length = int(length)
@@ -78,12 +79,12 @@ def read_primersearch(handle):
             # CGAACGGAAAGGTCTCTTCG hits forward strand at 1471917 with 0 mismatches
             s = re.search(rf, line)
             amplifier.forward_primer = s.group(1)
-            amplifier.start_position = s.group(2)
-            amplifier.forward_n_missmatch = s.group(3)
+            amplifier.start_position = int(s.group(2))
+            amplifier.forward_n_missmatch = int(s.group(3))
         elif 'reverse strand' in line:
             s = re.search(rr, line)
             amplifier.reverse_primer = s.group(1)
-            amplifier.reverse_n_missmatch = s.group(2)
+            amplifier.reverse_n_missmatch = int(s.group(2))
         else:
             amplifier.hit_info += line
 
