@@ -710,34 +710,6 @@ class DB:
         return [(line[0], line[1], line[2], line[3], line[4]) for line in results]
 
 
-    def get_ko_count_for_ko(self, ko_id):
-        has_multiple = isinstance(ko_id, list)
-        if has_multiple:
-            search_str = ",".join(str(ko) for ko in ko_id)
-            selection_query = f"IN ({search_str})"
-        else:
-            selection_query = f" = {ko_id}"
-
-        query = (
-            "SELECT fet.bioentry_id, hits.ko_id, COUNT(*) "
-            "FROM ko_hits as hits "
-            "INNER JOIN sequence_hash_dictionnary AS hsh ON hsh.hsh = hits.hsh "
-            "INNER JOIN seqfeature AS fet ON fet.seqfeature_id = hsh.seqid "
-            f"WHERE hits.ko_id {selection_query} "
-            "GROUP BY fet.bioentry_id, hits.ko_id;"
-        )
-        results = self.server.adaptor.execute_and_fetchall(query)
-
-        if has_multiple:
-            return DB.to_pandas_frame(results, ["bioentry", "ko_id", "count"])
-
-        hsh_results = {}
-        for line in results:
-            bioentry, ko_id, cnt = line[0], line[1], line[2]
-            hsh_results[bioentry] = cnt
-        return hsh_results
-
-
     def gen_ko_where_clause(self, search_on, entries):
         entries = self.gen_placeholder_string(entries)
         if search_on=="seqid":
@@ -1371,9 +1343,17 @@ class DB:
                 "AND (cds_term.name=\"CDS\" OR cds_term.name=\"tRNA\" "
                 " OR cds_term.name=\"tmRNA\" OR cds_term.name=\"rRNA\") "
             )
+        is_pseudo = (
+            ", CASE WHEN EXISTS ("
+            "SELECT NULL FROM seqfeature_qualifier_value AS pseudo "
+            "INNER JOIN term AS pseudo_term ON pseudo.term_id=pseudo_term.term_id "
+            "  AND (pseudo_term.name = \"pseudo\" OR pseudo_term.name = \"pseudogene\") "
+            "WHERE pseudo.seqfeature_id = locus_tag.seqfeature_id"
+            ") THEN 1 ELSE 0 END "
+        )
 
         query = (
-            f"SELECT locus_tag.seqfeature_id {add_type} "
+            f"SELECT locus_tag.seqfeature_id {add_type} {is_pseudo}"
             "FROM seqfeature_qualifier_value AS locus_tag "
             "INNER JOIN seqfeature AS cds "
             " ON cds.seqfeature_id=locus_tag.seqfeature_id "
@@ -1385,9 +1365,7 @@ class DB:
         values =  self.server.adaptor.execute_and_fetchall(query, [locus_tag,])
         if len(values)==0:
             raise RuntimeError("No such entry")
-        if feature_type:
-            return values[0]
-        return values[0][0]
+        return values[0]
 
     
     def get_bioentry(self, from_val, val_type="seqid"):
@@ -1457,14 +1435,22 @@ class DB:
     def get_CDS_type(self, ids):
         plchd = self.gen_placeholder_string(ids)
 
+        is_pseudo_query = (
+            "SELECT NULL FROM seqfeature_qualifier_value AS pseudo "
+            "INNER JOIN term AS pseudo_term ON pseudo.term_id=pseudo_term.term_id "
+            "  AND (pseudo_term.name = \"pseudo\" OR pseudo_term.name = \"pseudogene\") "
+            "WHERE pseudo.seqfeature_id = fet.seqfeature_id"
+        )
+
         query = (
-            "SELECT fet.seqfeature_id, type.name "
+            "SELECT fet.seqfeature_id, type.name,  "
+            f" CASE WHEN EXISTS({is_pseudo_query}) THEN 1 ELSE 0 END "
             "FROM seqfeature AS fet "
             "INNER JOIN term AS type ON type.term_id=fet.type_term_id "
             f"WHERE fet.seqfeature_id IN ({plchd});"
         )
         results = self.server.adaptor.execute_and_fetchall(query, ids)
-        return DB.to_pandas_frame(results, ["seqid", "type"]).set_index(["seqid"])
+        return DB.to_pandas_frame(results, ["seqid", "type", "is_pseudo"]).set_index(["seqid"])
 
 
     # Returns the seqid, locus tag, protein id, product and gene for a given
