@@ -134,11 +134,13 @@ class Column:
 
 class SimpleColorColumn(Column):
     def __init__(self, values, header=None, use_col=True,
-            face_params=None, header_params=None, col_func=None):
+            face_params=None, header_params=None, col_func=None,
+            default_val=0):
         super().__init__(header, face_params, header_params)
         self.values = values
         self.header = header
         self.use_col = use_col
+        self.default_val = default_val
         if face_params is None or "color" not in face_params:
             self.col = EteTree.BLUE
         else:
@@ -154,7 +156,7 @@ class SimpleColorColumn(Column):
 
     def get_face(self, index):
         index = int(index)
-        val = self.values.get(index, 0)
+        val = self.values.get(index, self.default_val)
 
         italic = "normal"
         if not self.face_params is None:
@@ -181,14 +183,21 @@ class ModuleCompletenessColumn(Column):
     *  - none missing: green
     *  - missing KOs: orange
     """
-    def __init__(self, values, header=None):
+    def __init__(self, values, header=None, add_missing=True):
         super().__init__(header)
         self.values = values
+        self.add_missing = add_missing
 
     def get_face(self, index):
         index = int(index)
         val = self.values.get(index, 0)
-        text_face = TextFace(val)
+
+        if self.add_missing:
+            text_face = TextFace(val)
+        elif val==0:
+            text_face = TextFace("C")
+        elif val>1:
+            text_face = TextFace("I")
 
         if val == 0:
             text_face.inner_background.color = EteTree.GREEN
@@ -196,6 +205,7 @@ class ModuleCompletenessColumn(Column):
             text_face.inner_background.color = EteTree.ORANGE
         self.set_default_params(text_face)
         return text_face
+
 
 class KOAndCompleteness(Column):
     """
