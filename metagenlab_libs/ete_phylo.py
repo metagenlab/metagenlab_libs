@@ -168,7 +168,8 @@ class EteTool():
                            show_values=False,
                            substract_min=False,
                            highlight_cutoff=False,
-                           highlight_reverse=False):
+                           highlight_reverse=False,
+                           max_value=False):
 
         if not show_values:
             self._add_header(header_name, column_add=0)
@@ -213,8 +214,10 @@ class EteTool():
                 lf.add_face(a, self.column_count, position="aligned")
             else:
                 barplot_column = 0
-
-            fraction_biggest = (float(value)/max(values_lists))*100
+            if not max_value:
+                fraction_biggest = (float(value)/max(values_lists))*100
+            else:
+                fraction_biggest = (float(value)/max_value)*100
             fraction_rest = 100-fraction_biggest
 
             if highlight_cutoff:
@@ -446,7 +449,8 @@ class EteToolCompact():
                            header_name,
                            color=False,
                            show_values=False,
-                           substract_min=False):
+                           substract_min=False,
+                           max_value=False):
 
         print("scale factor", self.text_scale)
 
@@ -454,6 +458,7 @@ class EteToolCompact():
             self._add_header(header_name, column_add=0)
         else:
             self._add_header(header_name, column_add=1)
+        
         
         values_lists = [float(i) for i in taxon2value.values()]
         
@@ -489,8 +494,10 @@ class EteToolCompact():
                 lf.add_face(a, self.column_count, position="aligned")
             else:
                 barplot_column = 0
-
-            fraction_biggest = (float(value)/max(values_lists))*100
+            if not max_value:
+                fraction_biggest = (float(value)/max(values_lists))*100
+            else:
+                fraction_biggest = (float(value)/max_value)*100
             fraction_rest = 100-fraction_biggest
 
             b = StackedBarFace([fraction_biggest, fraction_rest], 
