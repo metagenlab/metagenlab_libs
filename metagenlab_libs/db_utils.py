@@ -654,31 +654,28 @@ class DB:
 
     def get_ko_count_cat(self, subcategory=None, taxon_ids=None,
             subcategory_name=None, category=None, index=True):
-        sel = ""
+        sel = " TRUE "
+        join = ""
 
         args = []
         if taxon_ids != None:
             sel_str = ",".join("?" for _ in taxon_ids)
-            sel = f" AND entry.taxon_id IN ({sel_str})"
+            sel = f" entry.taxon_id IN ({sel_str}) "
             args = taxon_ids
 
         if subcategory != None:
-            where = f"WHERE module.subclass = ? AND is_signature_module = 0 {sel}"
+            where = f" module.subclass = ? AND is_signature_module = 0 AND {sel}"
             args = [subcategory] + args
         elif subcategory_name != None:
-            where = (
-                "INNER JOIN ko_class AS class ON module.subclass = class.class_id "
-                f"WHERE class.descr = ? AND is_signature_module = 0 {sel}"
-            )
+            join = "INNER JOIN ko_class AS class ON module.subclass = class.class_id "
+            where = f" class.descr = ? AND is_signature_module = 0 AND {sel}"
             args = [subcategory_name] + args
         elif not category is None:
-            where = (
-                "INNER JOIN ko_class AS class ON module.class = class.class_id "
-                f"WHERE module.class = ? AND is_signature_module = 0 {sel}"
-            )
+            join = "INNER JOIN ko_class AS class ON module.class = class.class_id "
+            where = f" module.class = ? AND is_signature_module = 0 AND {sel}"
             args = [category]+args
         else:
-            raise RuntimeError("")
+            where = sel
 
         query = (
             "SELECT entry.taxon_id, module.module_id, ktm.ko_id, COUNT(*) "
@@ -688,7 +685,8 @@ class DB:
             "INNER JOIN sequence_hash_dictionnary AS hsh ON hit.hsh = hsh.hsh "
             "INNER JOIN seqfeature AS fet ON fet.seqfeature_id = hsh.seqid "
             "INNER JOIN bioentry AS entry ON fet.bioentry_id=entry.bioentry_id "
-            f"{where}"
+            f"{join}"
+            f"WHERE {where}"
             "GROUP BY entry.taxon_id, module.module_id, ktm.ko_id;"
         )
         results = self.server.adaptor.execute_and_fetchall(query, args)
