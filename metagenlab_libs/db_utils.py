@@ -652,11 +652,8 @@ class DB:
         return hsh_results
 
 
-    def get_ko_count_cat(self, category=None, taxon_ids=None, category_name=None, index=True):
-        if category!=None and category_name!=None:
-            raise RuntimeError("Selection on both category and category name not supported")
-        if category==None and category_name==None:
-            raise RuntimeError("Need at least category or category name")
+    def get_ko_count_cat(self, subcategory=None, taxon_ids=None,
+            subcategory_name=None, category=None, index=True):
         sel = ""
 
         args = []
@@ -665,15 +662,23 @@ class DB:
             sel = f" AND entry.taxon_id IN ({sel_str})"
             args = taxon_ids
 
-        if category != None:
+        if subcategory != None:
             where = f"WHERE module.subclass = ? AND is_signature_module = 0 {sel}"
-            args = [category] + args
-        if category_name != None:
+            args = [subcategory] + args
+        elif subcategory_name != None:
             where = (
                 "INNER JOIN ko_class AS class ON module.subclass = class.class_id "
                 f"WHERE class.descr = ? AND is_signature_module = 0 {sel}"
             )
-            args = [category_name] + args
+            args = [subcategory_name] + args
+        elif not category is None:
+            where = (
+                "INNER JOIN ko_class AS class ON module.class = class.class_id "
+                f"WHERE module.class = ? AND is_signature_module = 0 {sel}"
+            )
+            args = [category]+args
+        else:
+            raise RuntimeError("")
 
         query = (
             "SELECT entry.taxon_id, module.module_id, ktm.ko_id, COUNT(*) "
@@ -694,16 +699,28 @@ class DB:
         return df.set_index(["taxon_id", "module_id", "KO"])
 
 
-    def get_modules_info(self, modules_id, as_pandas=False):
-        fmt = ",".join("?" for i in modules_id)
+    def get_modules_info(self, ids, search_on="module", as_pandas=False):
+        if search_on != "module" and search_on != "category" and search_on != "subcategory":
+            raise RuntimeError(f"Unsupported search term: {search_on}")
+
+        fmt = ",".join("?" for i in ids)
+        where_term = ""
+        if search_on=="module":
+            where_term = f"module_id IN ({fmt})"
+        elif search_on=="category":
+            where_term = f"cat.class_id IN ({fmt})"
+        elif search_on=="subcategory":
+            where_term = f"subcat.class_id IN ({fmt})"
+
+
         query = (
             "SELECT module_id, desc, definition, cat.descr, subcat.descr "
             "FROM ko_module_def AS def "
             "INNER JOIN ko_class AS subcat ON subcat.class_id = def.subclass "
             "INNER JOIN ko_class AS cat ON cat.class_id = def.class "
-            f"WHERE is_signature_module = 0 AND module_id IN ({fmt});"
+            f"WHERE is_signature_module = 0 AND {where_term};"
         )
-        results = self.server.adaptor.execute_and_fetchall(query, modules_id)
+        results = self.server.adaptor.execute_and_fetchall(query, ids)
 
         if as_pandas:
             return DB.to_pandas_frame(results, ["module_id", "descr", "definition", "cat", "subcat"])
