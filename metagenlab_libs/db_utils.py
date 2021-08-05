@@ -589,15 +589,27 @@ class DB:
         return hsh_results
 
 
-    def get_ko_pathways(self, ko_ids):
-        entries = ",".join("?" for i in ko_ids)
+    def get_ko_pathways(self, ids, search_on="ko", as_df=False):
+        if search_on!="ko" and search_on!="pathway":
+            raise RuntimeError("Search term not supported: "+search_on)
+
+        entries = ",".join("?" for i in ids)
+
+        if search_on=="ko":
+            where = "ktp.ko_id"
+        elif search_on=="pathway":
+            where  = "ktp.pathway_id"
+
         query = (
             "SELECT ktp.ko_id, path.pathway_id, path.desc "
             "FROM ko_to_pathway AS ktp "
             "INNER JOIN ko_pathway_def AS path ON path.pathway_id = ktp.pathway_id "
-            f"WHERE ktp.ko_id IN ({entries});"
+            f"WHERE {where} IN ({entries});"
         )
-        results = self.server.adaptor.execute_and_fetchall(query, ko_ids)
+        results = self.server.adaptor.execute_and_fetchall(query, ids)
+
+        if as_df:
+            return DB.to_pandas_frame(results, ["ko", "pathway", "description"])
         hsh_results = {}
         for line in results:
             ko_id = line[0]
@@ -654,6 +666,8 @@ class DB:
 
     def get_ko_count_cat(self, subcategory=None, taxon_ids=None,
             subcategory_name=None, category=None, index=True):
+
+        # TODO: will need to re-implement with a search_on syntax
         sel = " TRUE "
         join = ""
 
