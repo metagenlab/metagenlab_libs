@@ -105,6 +105,32 @@ class DB:
             hsh_results[line[0]] = line[1]
         return hsh_results
 
+
+    def get_refseq_hits(self, seqids):
+        placeholder = self.gen_placeholder_string(seqids)
+
+        query = (
+            "SELECT ref_homolog.sseqid, length, evalue, bitscore, gapopen, pident "
+            "FROM sequence_hash_dictionnary AS hsh "
+            "INNER JOIN diamond_refseq AS ref_homolog ON hsh.hsh=ref_homolog.seq_hash "
+            f"WHERE seqid IN ({placeholder});"
+        )
+        results = self.server.adaptor.execute_and_fetchall(query, seqids)
+        return DB.to_pandas_frame(results, ["match_id", "length", "evalue", "bitscore", "gaps", "pident"])
+
+
+    def get_refseq_matches_info(self, match_ids):
+        placeholder = self.gen_placeholder_string(match_ids)
+        query = (
+            "SELECT match_id, accession, taxid, description "
+            "FROM diamond_refseq_match_id "
+            f"WHERE match_id IN ({placeholder});"
+        )
+        results = self.server.adaptor.execute_and_fetchall(query, match_ids)
+        df = DB.to_pandas_frame(results, ["match_id", "accession", "taxid", "description"])
+        return df.set_index("match_id")
+
+
     # Returns all refseq hits associated with a given orthogroup
     def get_diamond_match_for_og(self, og):
         query = (
