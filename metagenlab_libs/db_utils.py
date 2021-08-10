@@ -105,6 +105,18 @@ class DB:
             hsh_results[line[0]] = line[1]
         return hsh_results
 
+    
+    def get_refseq_taxonomy(self, taxids):
+        placeholder = self.gen_placeholder_string(taxids)
+        query = (
+            "SELECT taxid, value "
+            "FROM taxonomy_mapping "
+            f"WHERE taxid IN ({placeholder});"
+        )
+        results = self.server.adaptor.execute_and_fetchall(query, taxids)
+        header = ["taxid", "taxonomic_name"]
+        return DB.to_pandas_frame(results, header).set_index("taxid")
+
 
     def get_refseq_hits(self, seqids):
         placeholder = self.gen_placeholder_string(seqids)
@@ -145,6 +157,7 @@ class DB:
         results = self.server.adaptor.execute_and_fetchall(query)
         gen = ((line[0], line[1]) for line in results)
         return gen
+
 
     def get_all_orthogroups(self, min_size=None):
         query = (
@@ -350,7 +363,7 @@ class DB:
         conn_refseq = sqlite3.connect(args["databases_dir"] + "/ncbi-taxonomy/linear_taxonomy.db")
         cursor = conn_refseq.cursor()
 
-        query_string = ",".join([str(i) for i in taxids])
+        query_string = ",".join("?" for i in taxids)
         query = (
             "SELECT tax_id, `superkingdom`, superkingdom_taxid, "
             " `phylum`, phylum_taxid, `class`, class_taxid, "
@@ -358,7 +371,7 @@ class DB:
             " `genus`, genus_taxid, `species`, species_taxid "
             f"FROM ncbi_taxonomy WHERE tax_id IN ({query_string});"
         )
-        results = cursor.execute(query, ).fetchall()
+        results = cursor.execute(query, taxids).fetchall()
         return (DB.Taxon(line) for line in results)
 
     def get_accession_to_taxid(self, accession, params):
