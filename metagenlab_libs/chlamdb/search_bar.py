@@ -9,18 +9,23 @@ from whoosh import index
 
 
 class SearchBarSchema(SchemaClass):
-    locus_tag = KEYWORD(stored=True)
-    gene = KEYWORD(stored=True)
-    product = TEXT(stored=True)
+    entry_type = ID(stored=True)
+    name = KEYWORD(stored=True)
+    description = TEXT(stored=True)
     organism = TEXT(stored=True)
-    cog = KEYWORD(stored=True)
-    ko = KEYWORD(stored=True)
-    og = KEYWORD(stored=True)
-    pfam = KEYWORD(stored=True)
+    locus_tag = KEYWORD(stored=True)
 
 
-field_list = ["locus_tag", "gene", "product", "organism", "cog", "ko", "og", "pfam"]
+field_list = ["entry_type", "name", "description", "organism", "locus_tag"]
 SearchResult = namedtuple("SearchResult", field_list)
+
+
+class EntryTypes:
+    COG  = "C"
+    Gene = "G"
+    KO   = "K"
+    PFAM = "P"
+    OG   = "O"
 
 
 class ChlamdbIndex:
@@ -44,17 +49,10 @@ class ChlamdbIndex:
         query = parser.parse(user_query)
 
         for result in self.index.searcher().search(query, limit=limit):
-            # Not pythonic, should be refactored
-            gene = result.get("gene", None)
-            locus_tag = result.get("locus_tag", None)
-            product = result.get("product", None)
-            organism = result.get("organism", None)
-            cog = result.get("cog", None)
-            ko = result.get("ko", None)
-            og = result.get("og", None)
-            pfam = result.get("pfam", None)
-            yield SearchResult(locus_tag=locus_tag, gene=gene, product=product,
-                    organism=organism, cog=cog, ko=ko, og=og, pfam=pfam)
+            hsh_res = {}
+            for item in field_list:
+                hsh_res[item] = result.get(item, None)
+            yield SearchResult(**hsh_res)
 
     def done_adding(self):
         self.writer.commit(optimize=True)
