@@ -612,16 +612,23 @@ class DB:
         return [(line[0], line[1]) for line in results]
 
 
-    # NOTE: when new dtb, to modify so that the input 
-    # is sanitized.
     def get_ko_desc(self, ko_ids):
-        entries = ",".join(f"{ko_id}" for ko_id in ko_ids)
+        if ko_ids is None:
+            where = (
+                "INNER JOIN ko_hits AS hit ON hit.ko_id=ko.ko_id "
+                "INNER JOIN sequence_hash_dictionnary AS hsh ON hsh.hsh=hit.hsh "
+                "GROUP BY ko.ko_id"
+            )
+        else:
+            entries = self.gen_placeholder_string(ko_ids)
+            where = f"WHERE ko.ko_id IN ({entries})"
+
         query = (
             "SELECT ko.ko_id, ko.descr "
             "FROM ko_def as ko "
-            f"WHERE ko.ko_id IN ({entries});"
+            f"{where};"
         )
-        results = self.server.adaptor.execute_and_fetchall(query)
+        results = self.server.adaptor.execute_and_fetchall(query, ko_ids)
         hsh_results = {}
         for line in results:
             hsh_results[line[0]] = line[1]
@@ -1352,12 +1359,22 @@ class DB:
 
 
     def get_cog_summaries(self, cog_ids, only_cog_desc=False, as_df=False):
-        ids = ",".join(["?"] * len(cog_ids))
+        if cog_ids is None:
+            where = (
+                "INNER JOIN cog_hits AS hits ON hits.cog_id=names.cog_id "
+                "INNER JOIN sequence_hash_dictionnary AS hsh ON hsh.hsh=hits.hsh "
+                "GROUP BY names.cog_id"
+            )
+        else:
+            ids = ",".join(["?"] * len(cog_ids))
+            where = f"WHERE names.cog_id IN ({ids})"
+
         query = (
-            "SELECT cog_id, function, description "
-            "FROM cog_names "
-            f"WHERE cog_id IN ({ids});"
+            "SELECT names.cog_id, function, description "
+            "FROM cog_names AS names "
+            f"{where};"
         )
+
         results = self.server.adaptor.execute_and_fetchall(query, cog_ids)
         if only_cog_desc and not as_df:
             hsh_results = {}
@@ -1380,7 +1397,6 @@ class DB:
                 func = function[i]
                 func_descr = hsh_func_to_description[func]
                 hsh_results[cog_id].append((func, func_descr, cog_description))
-
         return hsh_results
 
 
@@ -1578,7 +1594,7 @@ class DB:
             "INNER JOIN term AS t ON t.term_id = v.term_id "
             "INNER JOIN seqfeature AS seq ON seq.seqfeature_id = v.seqfeature_id "
             "INNER JOIN term AS cds_term ON seq.type_term_id=cds_term.term_id "
-            f" AND (cds_term.name=\"CDS\")"
+            f" AND (cds_term.name=\"CDS\" {add_cond})"
             f"{sel}"
             f"WHERE {where} AND t.name IN ({term_names_query}) {no_pseudo};"
         )
@@ -1861,25 +1877,33 @@ class DB:
 
 
     def get_pfam_def(self, pfam_ids, add_ttl_count=False):
-        plcd = self.gen_placeholder_string(pfam_ids)
-
         ttl_cnt, ttl_join, ttl_grp = "", "", ""
+        ttl_join_template = (
+            " INNER JOIN pfam_hits AS hits ON hits.pfam_id=pfam_defs.pfam_id "
+            "INNER JOIN sequence_hash_dictionnary AS hsh ON hsh.hsh=hits.hsh "
+        )
+        ttl_grp_template = "GROUP BY pfam_defs.pfam_id"
+
+        if pfam_ids is None:
+            where = ""
+            ttl_join = ttl_join_template
+            ttl_grp = ttl_grp_template
+        else:
+            plcd = self.gen_placeholder_string(pfam_ids)
+            where = f"WHERE pfam_defs.pfam_id IN ({plcd}) "
+
         if add_ttl_count:
             ttl_cnt = ", COUNT(*) "
-            ttl_join = (
-                " INNER JOIN pfam_hits AS hits ON hits.pfam_id=pfam_defs.pfam_id "
-                "INNER JOIN sequence_hash_dictionnary AS hsh ON hsh.hsh=hits.hsh "
-            )
-            ttl_grp = "GROUP BY pfam_defs.pfam_id"
+            ttl_grp = ttl_grp_template
+            ttl_join = ttl_join_template
 
         query = (
             f"SELECT pfam_defs.pfam_id, pfam_defs.definition {ttl_cnt} "
             f"FROM pfam_table AS pfam_defs {ttl_join} "
-            f"WHERE pfam_defs.pfam_id IN ({plcd}) "
+            f"{where}"
             f"{ttl_grp};"
         )
         results = self.server.adaptor.execute_and_fetchall(query, pfam_ids)
-
         cols = ["pfam", "def"]
         if add_ttl_count:
             cols.append("ttl_cnt")
