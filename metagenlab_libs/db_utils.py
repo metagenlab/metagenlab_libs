@@ -1482,6 +1482,16 @@ class DB:
         results = self.server.adaptor.execute_and_fetchall(query, query_params)
         return DB.to_pandas_frame(results, ["seqid", "start", "end", "strand"]).set_index(["seqid"])
 
+    
+    def get_contig_size(self, bioentry_id):
+        query = (
+            "SELECT length  "
+            "FROM biosequence "
+            "WHERE bioentry_id = ?;"
+        )
+        results = self.server.adaptor.execute_and_fetchall(query, [bioentry_id])
+        return results[0][0]
+
 
     def get_DNA_sequence(self, bioentry_id, alphabet="dna"):
         query = (
