@@ -1477,7 +1477,7 @@ class DB:
             "INNER JOIN location AS loc ON loc.seqfeature_id=fet.seqfeature_id "
             "INNER JOIN seqfeature AS initial_fet ON contig.bioentry_id=initial_fet.bioentry_id "
             "   AND initial_fet.seqfeature_id=? "
-            "WHERE (loc.start_pos > ? AND loc.end_pos<?);"
+            "WHERE (loc.end_pos > ? AND loc.start_pos < ?);"
         )
         results = self.server.adaptor.execute_and_fetchall(query, query_params)
         return DB.to_pandas_frame(results, ["seqid", "start", "end", "strand"]).set_index(["seqid"])
