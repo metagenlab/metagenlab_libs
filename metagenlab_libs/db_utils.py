@@ -2093,6 +2093,9 @@ class DB:
             all_ids += plasmids
         results = self.server.adaptor.execute_and_fetchall(query, all_ids)
 
+        if len(results) == 0:
+            return pd.DataFrame()
+
         # ugly code, open for improvements
         if indexing=="taxid" or indexing=="bioentry":
             column_names = [indexing, "cog", "count"]
