@@ -1687,12 +1687,16 @@ class DB:
         results = self.server.adaptor.execute_and_fetchall(query, [taxon_id])
         return DB.to_pandas_frame(results, ["bioentry_id", "accession" ,"length", "seq"]).set_index(["bioentry_id"])
     
-    # return table of all features of a target genome (filter by term name) 
-    # basically the same as get_proteins_info but with rrna and trna
-    # TODO: merge with get_proteins_info
-    def get_features_location(self, taxon_id, term_names=['CDS', 'rRNA', 'tRNA']):
+    # return table of all features of a target genome with location,  (filter by term name) 
+    # basically the same as get_proteins_info but with rrna and trna and location
+    # possibility to merge with get_proteins_info? # locus, prot_id, gene, product
+    def get_features_location(self, 
+                              taxon_id, 
+                              seq_term_names=['CDS', 'rRNA', 'tRNA'],
+                              seq_qual_term_names=['locus_tag', 'product', 'gene']):
         
-        term_names_query = ",".join(f"\"{name}\"" for name in term_names)
+        seq_term_query = ",".join(f"\"{name}\"" for name in seq_term_names)
+        qual_term_query = ",".join(f"\"{name}\"" for name in seq_qual_term_names)
         
         query = (
             "select t1.bioentry_id, t2.seqfeature_id,t5.start_pos, t5.end_pos, t5.strand, t4.name as term_name,t6.value,t7.name as qualifier  from bioentry t1 "
@@ -1701,7 +1705,7 @@ class DB:
             "inner join location t5 on t2.seqfeature_id = t5.seqfeature_id "
             "inner join seqfeature_qualifier_value t6 on t2.seqfeature_id =t6.seqfeature_id "
             "inner join term t7 on t6.term_id = t7.term_id "
-            f"where t1.taxon_id={self.placeholder} and t4.name in ({term_names_query}) and t7.name in (\"locus_tag\", \"product\", \"gene\"); "
+            f"where t1.taxon_id={self.placeholder} and t4.name in ({seq_term_query}) and t7.name in ({qual_term_query}); "
         )
         
         results = self.server.adaptor.execute_and_fetchall(query, [taxon_id])
