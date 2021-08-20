@@ -1859,7 +1859,7 @@ class DB:
         print("df shape", df.shape)
         for n, row in df.iterrows():
             alias = row[molis_alias]
-
+            print("row---", row)
             print("alias", alias)
             try:
                 sample_list = molis2sample_list[str(alias)]
