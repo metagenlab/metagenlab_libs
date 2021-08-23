@@ -163,7 +163,7 @@ class SimpleColorColumn(Column):
             if self.face_params.get("italic", False):
                 italic = "ITalic"
 
-        text_face = TextFace(val, fstyle=italic)
+        text_face = TextFace(str(val).center(8-len(str(val))), fstyle=italic)
         # to recode
         if self.use_col and val != 0 and index in self.values:
             if self.col_func is None:
