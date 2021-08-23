@@ -1452,22 +1452,6 @@ class DB:
         return values[0]
 
     
-    def get_bioentry(self, from_val, val_type="seqid"):
-        if val_type != "seqid":
-            raise Exception("For now, only seqid indexing is supported")
-        # may be extended in the future for other types of indexing
-
-        sql = (
-            "SELECT bioentry_id "
-            "FROM seqfeature "
-            "WHERE seqfeature_id = ?;"
-        )
-        values = self.server.adaptor.execute_and_fetchall(sql, [from_val])
-
-        # assumes result has been found
-        return values[0][0]
-
-
     def get_seqid_in_neighborhood(self, seqid, start, stop):
         query_params = [seqid, start, stop]
         query = (
@@ -1885,20 +1869,38 @@ class DB:
                 hsh_results[entry_id][func] = cnt+1
         return hsh_results
 
-    #################
-    # circos data
-    #################
-    def get_bioentry_list(self, taxon_id, min_bioentry_length=1000):
+    
+    def get_bioentry_list(self, search_term, search_on="taxid", min_bioentry_length=None):
+        if search_on=="taxid":
+            where = f"t1.taxon_id = {self.placeholder}"
+            join = ""
+        elif search_on=="seqid":
+            where = f"feature.seqfeature_id = {self.placeholder} "
+            join = "INNER JOIN seqfeature AS feature ON feature.bioentry_id=t1.bioentry_id "
+        else:
+            raise RuntimeError(f"Unsupported argument: {search_on}, must be either taxid or seqid")
+
+        length_term = ""
+        if not min_bioentry_length is None:
+            length_term = f" AND length > {min_bioentry_length}"
         
         query = (
-            "select t2.bioentry_id,t1.accession,length,seq " 
-            "from bioentry t1 "
-            "inner join biosequence t2 on t1.bioentry_id =t2.bioentry_id "
-            f"where t1.taxon_id = {self.placeholder} and length > {min_bioentry_length} "
+            "SELECT t2.bioentry_id, t1.accession, length, seq " 
+            "FROM bioentry t1 "
+            "INNER JOIN biosequence t2 ON t1.bioentry_id=t2.bioentry_id "
+            f"{join}"
+            f"WHERE {where} {length_term};"
         )
         
-        results = self.server.adaptor.execute_and_fetchall(query, [taxon_id])
-        return DB.to_pandas_frame(results, ["bioentry_id", "accession" ,"length", "seq"]).set_index(["bioentry_id"])
+        results = self.server.adaptor.execute_and_fetchall(query, [search_term])
+        header = ["bioentry_id", "accession" ,"length", "seq"]
+
+        if search_on=="seqid":
+            # assumes only one contig for a given seqid
+            # bioentry_id, accession, length, seq
+            return results[0]
+        return DB.to_pandas_frame(results, header).set_index(["bioentry_id"])
+
     
     # return table of all features of a target genome with location,  (filter by term name) 
     # basically the same as get_proteins_info but with rrna and trna and location
