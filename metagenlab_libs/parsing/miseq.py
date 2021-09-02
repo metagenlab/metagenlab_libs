@@ -8,7 +8,7 @@ def parse_sample_sheet(sheet_path):
     IEMFileVersion,4
     Investigator Name,Sebastien Aeby
     Experiment Name,20200213_MTB
-    Date,13.02.2020 OR Date,13-02-2020
+    Date,13.02.2020 OR Date,2021-09-02
     Workflow,GenerateFASTQ
     Application,FASTQ Only
     Assay,Nextera XT
@@ -43,9 +43,14 @@ def parse_sample_sheet(sheet_path):
         for row in f:
             if row.startswith("Date"):
                 run_date = row.rstrip().split(",")[1]
-                # Date,13.02.2020 OR Date,13-02-2020
+                
                 run_date_split = re.split("\.|\/|-", run_date)
-                run_date = f'{int(run_date_split[2])}-{int(run_date_split[1]):02d}-{int(run_date_split[0]):02d}'
+                if len(run_date_split[2]) == 4:
+                    # 13.02.2020
+                    run_date = f'{int(run_date_split[2])}-{int(run_date_split[1]):02d}-{int(run_date_split[0]):02d}'
+                elif len(run_date_split[0]) == 4:
+                    # 2020-02-13
+                    run_date = f'{int(run_date_split[0])}-{int(run_date_split[1]):02d}-{int(run_date_split[2]):02d}'
             if row.startswith("Experiment Name"):
                 run_name = row.rstrip().split(",")[1]   
             if row.startswith("Assay"):
