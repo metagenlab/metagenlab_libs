@@ -11,12 +11,14 @@ import GEN_database.settings as GEN_settings
 
 print("DB_DRIVER", GEN_settings.DB_DRIVER)
 
+
 try:
     settings.configure(INSTALLED_APPS=GEN_settings.INSTALLED_APPS,
                        DATABASES=GEN_settings.DATABASES)
 
     import django
     django.setup()
+    print("django setup ok")
 except:
     print("django setup failed-- already done?")
     pass
@@ -906,19 +908,28 @@ class DB:
         return pandas.read_sql(sql, self.conn)
 
 
-    def get_analysis_metadata(self, term_name, analysis_id_list=False):
+    def get_analysis_metadata(self, term_name, analysis_id_list=False, subproject_id_list=False, workflow_id_list=False):
         
 
         add_filter = ''
         if analysis_id_list:
             filter_str = ','.join([str(i) for i in analysis_id_list])
-            add_filter = f' and t1.analysis_id in ({filter_str})'
+            add_filter += f' and t1.analysis_id in ({filter_str})'
+        if subproject_id_list:
+            filter_str = ','.join([str(i) for i in subproject_id_list])
+            add_filter += f' and t3.subproject_id in ({filter_str})'
+        if workflow_id_list:
+            filter_str = ','.join([str(i) for i in workflow_id_list])
+            add_filter += f' and t4.workflow_id in ({filter_str})'  
 
         sql = f"""select t1.analysis_id,value from GEN_analysismetadata t1 
                   inner join GEN_term t2 on t1.term_id =t2.id 
+                  inner join GEN_projectanalysis t3 on t1.analysis_id=t3.analysis_id
+                  inner join GEN_analysis t4 on t1.analysis_id=t4.id
                   where t2.name like '{term_name}'
                   {add_filter}
                   """
+        print(sql)
         self.cursor.execute(sql,) 
         return {int(i[0]):i[1] for i in self.cursor.fetchall()}
 
