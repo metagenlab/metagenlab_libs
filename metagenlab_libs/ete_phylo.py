@@ -287,6 +287,7 @@ class EteTool():
                 if color_scale:
                     n.background.color = value2color[taxon2text[lf.name]]
             else:
+                print(lf.name, "not in", taxon2text)
                 n = TextFace('-')
             n.margin_top = 1
             n.margin_right = 10

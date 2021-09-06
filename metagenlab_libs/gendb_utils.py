@@ -1602,13 +1602,17 @@ class DB:
         fastq2run_name = self.get_fastq_id2run_name()
         df["run_name"] = [fastq2run_name[str(i)] for i in df["fastq_id"]]
 
+        # get_fastq_id2sample_name
+        fastq2sample_name = self.get_fastq_id2sample_name(fastq_list=df["fastq_id"].to_list())
+        df["sample_name"] = [fastq2sample_name[str(i)] for i in df["fastq_id"]]
+
         # add patient id
         fastq_id2patient_id = self.get_fastq_metadata("patient_id", index_str=False)
         df["patient_id"] = [fastq_id2patient_id[i] if i in fastq_id2patient_id else '-' for i in df["fastq_id"]]
 
         # add patient id
-        fastq_id2pangolin_lineage = self.get_fastq_metadata("pangolin_lineage", index_str=False)
-        df["pangolin_lineage"] = [fastq_id2pangolin_lineage[i] if i in fastq_id2pangolin_lineage else '-' for i in df["fastq_id"]]
+        fastq_id2pangolin_lineage = self.get_fastq_metadata("pangolin_lineage", index_str=True)
+        df["pangolin_lineage"] = [fastq_id2pangolin_lineage[str(i)] if str(i) in fastq_id2pangolin_lineage else '-' for i in df["fastq_id"]]
 
         return df
 
