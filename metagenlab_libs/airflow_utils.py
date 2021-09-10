@@ -255,7 +255,8 @@ def write_snakemake_config_file(analysis_name,
         reference_list = reference_list.split(",")
         fastq_df = GEN_DB.get_fastq_and_sample_data(reference_list)
         # check if external ref
-        ref_list = [ref for ref in reference_list if int(ref) not in fastq_df["fastq_id"].to_list()]
+        ref_list = [ref for ref in reference_list if str(ref) not in fastq_df["fastq_id"].astype(str).to_list()]
+
         if len(ref_list) != 0:
             print(f"WARNING: extrenal reference genome -- {ref_list[0]} ")
         ref_list += [f'{row["sample_name"]}_{row["fastq_id"]}' for n, row in fastq_df.iterrows()]
