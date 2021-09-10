@@ -898,7 +898,7 @@ class DB:
         # left join because some fastq won't have match in the sample table
         # possible problem: fastq prefix match with multiple samples from different species
         # in that case: remove species name
-        sql = f'''select distinct t1.id as fastq_id,fastq_prefix,R1,R2,species_name,molis_id, sample_name,t4.run_name,t2.sample_id from GEN_fastqfiles t1 
+        sql = f'''select distinct t1.id as fastq_id,fastq_prefix,R1,R2,taxonomy,molis_id, sample_name,t4.run_name,t2.sample_id from GEN_fastqfiles t1 
                 left join GEN_fastqtosample t2 on t1.id=t2.fastq_id
                 left join GEN_sample t3 on t2.sample_id=t3.id
                 inner join GEN_runs t4 on t1.run_id=t4.id
@@ -1220,7 +1220,7 @@ class DB:
 
             nr_fastq_list =  [str(i) for i in set(nr_fastq_list)]
 
-            detail_df = self.get_fastq_and_sample_data(nr_fastq_list)[["fastq_id","fastq_prefix","run_name","species_name","molis_id", "sample_name"]].set_index("fastq_id")
+            detail_df = self.get_fastq_and_sample_data(nr_fastq_list)[["fastq_id","fastq_prefix","run_name","taxonomy","molis_id", "sample_name"]].set_index("fastq_id")
 
             if not hits_sample_metadata_df.empty:
                 print("not empty!")
@@ -1397,7 +1397,7 @@ class DB:
 
     def get_fastq(self, run_name=False):
         
-        sql = 'select t1.id,run_name,date_run,qc,fastq_prefix,xlsx_sample_ID,species_name,date_received,read_length,t1.id from GEN_fastqfiles t1 ' \
+        sql = 'select t1.id,run_name,date_run,qc,fastq_prefix,xlsx_sample_ID,taxonomy,date_received,read_length,t1.id from GEN_fastqfiles t1 ' \
             ' inner join GEN_runs t2 on t1.run_id=t2.id ' \
             ' left join GEN_fastqtosample t3 on t1.id=t3.fastq_id' \
             ' left join GEN_sample t4 on t3.sample_id=t4.id'
@@ -1449,7 +1449,7 @@ class DB:
     
     def get_run_sample2species(self, run_name):
         # left join because some fastq won't have match in the sample table
-        sql = f'''select fastq_prefix,species_name from GEN_fastqfiles t1 
+        sql = f'''select fastq_prefix,taxonomy from GEN_fastqfiles t1 
                 inner join GEN_runs t2 on t1.run_id=t2.id
                 left join GEN_fastqtosample t3 on t1.id=t3.fastq_id
                 left join GEN_sample t4 on t3.sample_id=t4.id where run_name="{run_name}";
@@ -1722,7 +1722,7 @@ class DB:
     def get_sample2species(self, sample_list):
         
         sample_list_filter = '","'.join(sample_list)
-        sql = f'''select distinct fastq_prefix,species_name from GEN_fastqfiles t1 
+        sql = f'''select distinct fastq_prefix,taxonomy from GEN_fastqfiles t1 
               left join GEN_fastqtosample t2 on t1.id=t2.fastq_id
               left join GEN_sample t3 on t2.sample_id=t3.id 
               where fastq_prefix in ("{sample_list_filter}");
@@ -1733,7 +1733,7 @@ class DB:
     def get_fastq_id2species(self, fastq_list):
         
         fastq_list_filter = '","'.join([str(i) for i in fastq_list])
-        sql = f'''select distinct fastq_prefix,species_name from GEN_fastqfiles t1 
+        sql = f'''select distinct fastq_prefix,taxonomy from GEN_fastqfiles t1 
               left join GEN_fastqtosample t2 on t1.id=t2.fastq_id
               left join GEN_sample t3 on t2.sample_id=t3.id 
               where t1.id in ("{fastq_list_filter}");
@@ -1906,7 +1906,10 @@ class DB:
                     elif field_definition[field]["type"] == 'split':
                         index = field_definition[field]["fields"][2]
                         delimiter = field_definition[field]["fields"][1]
-                        val = row[field_definition[field]["fields"][0]].split(delimiter)[index]
+                        try:
+                            val = row[field_definition[field]["fields"][0]].split(delimiter)[index]
+                        except IndexError:
+                            val = 'n/a'
                     elif field_definition[field]["type"] == 'concatenate':
                         field_list = field_definition[field]["fields"]
                         values = row[field_list].to_list()
