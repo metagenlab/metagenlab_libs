@@ -212,7 +212,7 @@ def write_sample_file(gen_db_path,
             R1 = row["R1"]
             R2 = row["R2"]
             fastq_id = row["fastq_id"]
-            species = row["species_name"]
+            species = row["taxonomy"]
             sample_name = f'{row["sample_name"]}_{fastq_id}'
             f.write(f"{sample_name}\t{species}\t{R1}\t{R2}\t{fastq_id}\n")
             
