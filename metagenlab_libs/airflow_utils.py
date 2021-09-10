@@ -260,8 +260,8 @@ def write_snakemake_config_file(analysis_name,
         if len(ref_list) != 0:
             print(f"WARNING: extrenal reference genome -- {ref_list[0]} ")
         ref_list += [f'{row["sample_name"]}_{row["fastq_id"]}' for n, row in fastq_df.iterrows()]
-        if 'cgMLST' in reference_list:
-            ref_list.append("cgMLST")
+        #if 'cgMLST' in reference_list:
+        #    ref_list.append("cgMLST")
         
     
     print("additional_args", additional_args)
