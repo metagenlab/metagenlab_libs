@@ -13,16 +13,17 @@ print("DB_DRIVER", GEN_settings.DB_DRIVER)
 
 
 try:
+    print("congihuration")
     settings.configure(INSTALLED_APPS=GEN_settings.INSTALLED_APPS,
                        DATABASES=GEN_settings.DATABASES)
-
+    print("import django")
     import django
+    print("SETUP")
     django.setup()
     print("django setup ok")
 except:
     print("django setup failed-- already done?")
     pass
-
 
 class DB:
     def __init__(self,):
@@ -752,6 +753,131 @@ class DB:
         return G, T, groups
 
 
+    def mutation_prevalence(self, nucl_change, qc_filter = ["PASSED"], alt_freq_cutoff=70):
+        '''
+        Return table of fastq_id with a target nucl_change with registration date
+        '''
+
+        filter = '","'.join(qc_filter)
+
+        sql = f'select distinct t1.fastq_id,t1.nucl_change, t3.value as registration_date from GEN_snps t1 ' \
+              ' inner join GEN_fastqtosample t2 on t1.fastq_id=t2.fastq_id' \
+              ' inner join GEN_samplemetadata t3 on t2.sample_id=t3.sample_id' \
+              ' inner join GEN_term t4 on t3.term_id=t4.id' \
+              ' inner join GEN_fastqfilesmetadata t5 on t2.fastq_id=t5.fastq_id' \
+              ' inner join GEN_term t6 on t5.term_id=t6.id' \
+              f' where t4.name=\'registration_date\' and t6.name="qc_status" and t5.value in ("{filter}") and t1.nucl_change="{nucl_change}" and alt_percent > {alt_freq_cutoff};' 
+        print(sql)
+        df_mut = pandas.read_sql(sql, self.conn) 
+
+        return df_mut
+
+    def get_weekly_genome_count(self, qc_filter=["PASSED"], to_dict=True):
+        import datetime
+        filter = '","'.join(qc_filter)
+
+        sql = ' select t2.fastq_id, t3.value as registration_date from GEN_fastqtosample t2 ' \
+              ' inner join GEN_samplemetadata t3 on t2.sample_id=t3.sample_id' \
+              ' inner join GEN_term t4 on t3.term_id=t4.id' \
+              ' inner join GEN_fastqfilesmetadata t5 on t2.fastq_id=t5.fastq_id' \
+              ' inner join GEN_term t6 on t5.term_id=t6.id' \
+              f' where t4.name=\'registration_date\' and t6.name="qc_status" and t5.value in ("{filter}");' 
+
+        df = pandas.read_sql(sql, self.conn) 
+
+
+        df["registration_date"] = [datetime.datetime.strptime(i, '%Y-%m-%d') for i in df["registration_date"]]
+
+        df['week'] = df['registration_date'].dt.isocalendar().week
+
+        df['year'] = df['registration_date'].dt.isocalendar().year
+
+        df["year_week"] = df['year'].astype(str).str.cat(df['week'].astype(str),sep=" - ")
+
+        df = df.groupby(["year","week","year_week"]).count()[["registration_date"]].reset_index()
+        df.columns = ["year","week","year_week", "n_genomes"]
+        
+        if to_dict:
+            return df.set_index(["year_week"]).to_dict()["n_genomes"]
+        else:
+            return df
+
+
+    def plot_mutation_prevalence(self, 
+                                 mutation, 
+                                 color_factor="pangolin_lineage", 
+                                 color_sample_metadata=False, 
+                                 qc_filter = ["PASSED"],
+                                 alt_freq_cutoff=70):
+        import datetime
+        import plotly.express as px
+
+        df_mut = self.mutation_prevalence(mutation, qc_filter=qc_filter, alt_freq_cutoff=alt_freq_cutoff)
+
+        df_metadata = self.get_fastq_metadata_list_v2(fastq_filter=df_mut.fastq_id.to_list(), term_list=[color_factor])
+
+        print("COLs", df_metadata.columns)
+
+        df_metadata = df_metadata[["fastq_id", "name","value"]].drop_duplicates()
+
+        df_mut = df_mut.merge(df_metadata, on='fastq_id', how='left')
+        df_mut["name"] = df_mut["name"].fillna(color_factor)
+        df_mut["value"] = df_mut["value"].fillna("n/a")
+
+        df_mut["registration_date"] = [datetime.datetime.strptime(i, '%Y-%m-%d') for i in df_mut["registration_date"]]
+
+        df_mut['week'] = df_mut['registration_date'].dt.isocalendar().week
+
+        df_mut['year'] = df_mut['registration_date'].dt.isocalendar().year
+        df_mut["year_week"] = df_mut['year'].astype(str).str.cat(df_mut['week'].astype(str),sep=" - ")
+
+        df_mut_count = df_mut.groupby(["year_week", "value"]).count()["year"].reset_index()
+
+        year_week_genome_count = self.get_weekly_genome_count(qc_filter=qc_filter, to_dict=False)
+
+        order = year_week_genome_count[["year", "week", "year_week"]].drop_duplicates().sort_values(by=['year', 'week'])
+
+        year_week2n_genomes = year_week_genome_count.set_index(["year_week"]).to_dict()["n_genomes"]
+
+        df_mut_count["percentage"] = [(row.year/year_week2n_genomes[row.year_week])*100 for n,row in df_mut_count.iterrows()]
+
+        for week in year_week2n_genomes:
+            if week not in df_mut_count["year_week"].to_list():
+                df_mut_count = df_mut_count.append({'year_week': week, "year":0, "percentage": 0}, ignore_index=True)
+
+
+        df_mut_count = df_mut_count.fillna(0)
+
+        fastq_count = df_mut.groupby(["fastq_id"]).count()[["year_week"]]
+        fastq_count.columns = ["n_entries"]
+
+        fig = px.bar(df_mut_count, 
+                     x="year_week", 
+                     y="percentage", 
+                     color="value",
+                     title=f"Prevalence of the mutation {mutation}", 
+                     template='plotly_white', 
+                     category_orders={"year_week": order["year_week"].to_list()})
+        df_mut_count.to_csv("data_prev.tsv", sep="\t")
+        fig.update_xaxes(
+                tickangle = -45,
+                title_font = {"size": 16},
+                title_standoff = 25)
+
+        fig.update_yaxes(
+                title_font = {"size": 16},
+                title_standoff = 25)
+
+        fig.update_yaxes(range = [0,100])
+        fig.update_xaxes(title_text="Week")
+        fig.update_yaxes(title_text="Percentage of genomes (qc=PASSED)")
+
+        return fig, fastq_count
+
+
+
+
+
     def get_fastq_metadata_list_v2(self, 
                                    term_list=False, 
                                    fastq_filter=None, 
@@ -1286,6 +1412,29 @@ class DB:
 
         return df_1, summary_data
 
+
+    def snp_info(self, snp_id):
+
+        sql = f'select name,value,description from GEN_snpsmetadata t1 inner join GEN_term t2 on t1.term_id=t2.id where snp_id={snp_id};'
+
+        df = pandas.read_sql(sql, self.conn)
+
+        return df
+
+    
+    def snp_info_stats(self,):
+
+        sql = 'select name,value from GEN_snpsmetadata t1 inner join GEN_term t2 on t1.term_id=t2.id;'
+        df = pandas.read_sql(sql, self.conn)
+        df["value"] = pandas.to_numeric(df["value"], errors='coerce')
+        term2median = df.groupby(["name"])['value'].median().round(3).to_dict()
+        term2mean = df.groupby(["name"])['value'].mean().round(3).to_dict()
+        term2sd = df.groupby(["name"])['value'].std().round(3).to_dict()        
+
+        return term2median, term2mean, term2sd
+
+
+
     def parwise_snps_comp(self, fastq_list, alt_freq_cutoff=70):
         import itertools
         comb = itertools.combinations(fastq_list, 2)
@@ -1538,10 +1687,17 @@ class DB:
                          term_list):
         from GEN.models import Term
         term2term_id = {}
-        for term_name in term_list:
-            term = Term.objects.get_or_create(name=term_name)[0]
-            term2term_id[term_name] = term.id
-        return term2term_id
+        if isinstance(term_list, list):
+            for term_name in term_list:
+                term = Term.objects.get_or_create(name=term_name)[0]
+                term2term_id[term_name] = term.id
+            return term2term_id
+        # dictionnary of the form term_name2description
+        elif isinstance(term_list, dict):
+            for term_name in term_list:
+                term = Term.objects.get_or_create(name=term_name, description=term_list[term_name])[0]
+                term2term_id[term_name] = term.id
+            return term2term_id
 
     def get_term_id2term_name(self, 
                               term_id_list):
@@ -1604,7 +1760,7 @@ class DB:
 
         # get_fastq_id2sample_name
         fastq2sample_name = self.get_fastq_id2sample_name(fastq_list=df["fastq_id"].to_list())
-        df["sample_name"] = [fastq2sample_name[str(i)] for i in df["fastq_id"]]
+        df["sample_name"] = [fastq2sample_name[str(i)] if str(i) in fastq2sample_name else '-' for i in df["fastq_id"]]
 
         # add patient id
         fastq_id2patient_id = self.get_fastq_metadata("patient_id", index_str=False)
@@ -1627,7 +1783,7 @@ class DB:
             analysis_filter = ','.join([str(i) for i in analysis_id_list])
             add_filter += f' and analysis_id in ({analysis_filter})'
 
-        sql = f'''select distinct fastq_id,reference,position,ref,alt,effect_id,gene,aa_position,aa_change,nucl_change,depth,ref_count,alt_count,alt_percent from GEN_snps 
+        sql = f'''select distinct id,fastq_id,reference,position,ref,alt,effect_id,gene,aa_position,aa_change,nucl_change,depth,ref_count,alt_count,alt_percent from GEN_snps 
                   where fastq_id={fastq_id} 
                   and alt_percent>{min_alt_freq} {add_filter};'''
 
