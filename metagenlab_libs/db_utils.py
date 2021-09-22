@@ -1935,6 +1935,7 @@ class DB:
         
         return df_merged
         
+
     def get_identity_closest_homolog(self, reference_taxid, target_taxids):
         
         targets = ','.join([str(i) for i in target_taxids])
@@ -1959,9 +1960,6 @@ class DB:
         # keep homolog with the highest identity
         #df_pivot = df.pivot_table(index=["seqfeature_id_1"], columns="target_taxid",values="identity", aggfunc=lambda x: max(x))
         return df
-    
-    #################
-    
     
 
     def get_pfam_def(self, pfam_ids, add_ttl_count=False):
