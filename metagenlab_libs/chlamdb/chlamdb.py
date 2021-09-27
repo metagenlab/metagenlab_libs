@@ -24,7 +24,7 @@
 # Date: 29.10.2020
 
 import os
-import db_utils
+from metagenlab_libs import db_utils
 import argparse
 
 import queue
@@ -51,34 +51,19 @@ def create_data_table(db):
     entry_list = [
         ("orthology", "mandatory", False),
         ("orthogroup_alignments", "mandatory", False),
-        ("old_locus_table", "mandatory", False),
         ("reference_phylogeny", "mandatory", False),
         ("taxonomy_table", "mandatory", False),
         ("genome_statistics", "mandatory", False),
         ("BLAST_database", "optional", False),
         ("gene_phylogenies", "optional", False),
-        ("interpro_data", "optional", False),
-        ("interpro_comparative", "optional", False),
-        ("interpro_comparative_accession", "optional", False),
-        ("priam_data", "optional", False),
-        ("priam_comparative", "optional", False),
-        ("priam_comparative_accession", "optional", False),
         ("COG", "optional", False),
         ("KEGG", "optional", False),
         ("pfam", "optional", False),
-        ("TCDB_data", "optional", False),
-        ("psortb_data", "optional", False),
-        ("T3SS_data", "optional", False),
-        ("PDB_data", "optional", False),
         ("BLAST_refseq", "optional", False),
         ("BLAST_swissprot", "optional", False),
         ("BBH_phylogenies", "optional", False),
         ("GC_statistics", "optional", False),
-        ("gene_clusters", "optional", False),
         ("phylogenetic_profile", "optional", False),
-        ("synonymous_table", "optional", False),
-        ("interpro_taxonomy", "optional", False), # interpro taxnonomy statistics
-        ("COG_taxonomy", "optional", False) # COG taxnonomy statistics
     ]
     db.load_chlamdb_config_tables(entry_list)
     db.commit()
@@ -87,14 +72,13 @@ def setup_biodb(kwargs):
     sqlpsw = kwargs.get("db_psswd", DEFAULT_PSSWD)
     db_type = kwargs.get("db_type", DEFAULT_TYPE)
     db_name = kwargs.get("db_name", DEFAULT_DB_NAME)
-    schema_dir = kwargs.get("biosql_schema_dir", "biosql_schema")
+    sql_def_file = kwargs.get("biosql_schema", "")
 
     if db_type=="sqlite":
         import sqlite3
         conn = sqlite3.connect(db_name)
         cursor = conn.cursor()
-        url_biosql_scheme = 'biosqldb-sqlite.sql'
-        err_code = os.system(f"sqlite3 {db_name} < {schema_dir}/{url_biosql_scheme}")
+        err_code = os.system(f"sqlite3 {db_name} < {sql_def_file[0]}")
         conn.execute("pragma journal_mode=wal")
     else:
         # NOTE: this part is untested!
@@ -385,33 +369,13 @@ def load_KO_references(db, params, ko_dir=DEFAULT_KO_DIR):
 
 
 def setup_cog(db, cog_dir):
-    cog2cdd_file = open(cog_dir+"/cog_corresp.tab", "r")
-    cog2length_file = open(cog_dir+"/cog_length.tab", "r")
-    fun_names_file = open(cog_dir+"/fun2003-2014.tab")
-    cog_names_file = open(cog_dir+"/cognames2003-2014.tab")
-
-    cdd_to_cog = []
-    for line in cog2cdd_file:
-        tokens = line.split("\t")
-        cdd_to_cog.append( (int(tokens[1].strip()), int(tokens[0][len("COG"):])) )
-    db.load_cdd_to_cog(cdd_to_cog)
-
-    hsh_cog_to_length = {}
-    for line in cog2length_file:
-        tokens = line.split("\t")
-        hsh_cog_to_length[int(tokens[0][3:])] = int(tokens[1])
+    fun_names_file = open(cog_dir+"/fun-20.tab", "r")
+    cog_names_file = open(cog_dir+"/cog-20.def.tab", "r")
 
     cog_ref_data = []
-    # necessary to track, as some cogs listed in the CDD to COG mapping table
-    # are not present in those descriptors
-    hsh_cog_ids = {}
     for line_no, line in enumerate(cog_names_file):
-        # pass header
-        if line_no == 0:
-            continue
-        tokens = line.split("\t")
+        tokens = line.strip().split("\t")
         cog_id = int(tokens[0][3:])
-        hsh_cog_ids[cog_id] = True
         fun = tokens[1].strip()
         description = tokens[2].strip()
         cog_ref_data.append( (cog_id, fun, description) )
@@ -421,7 +385,7 @@ def setup_cog(db, cog_dir):
     for line_no, line in enumerate(fun_names_file):
         if line_no==0:
             continue
-        function, description = line.split("\t") 
+        function, random_str, description = line.split("\t") 
         cog_fun_data.append( (function.strip(), description.strip()) )
     db.load_cog_fun_data(cog_fun_data)
     db.commit()
@@ -455,6 +419,9 @@ parser.add_argument("--ko_dir", nargs="?", default=DEFAULT_KO_DIR,
 
 parser.add_argument("--skip_biodb", action="store_true", default=False,
         help="skip setting up biodb, might be useful if using a pre-existing db")
+
+parser.add_argument("--biosql_schema", nargs="+",
+        help="location of the biosql schema")
 
 args = vars(parser.parse_args())
 

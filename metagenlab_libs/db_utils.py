@@ -411,27 +411,6 @@ class DB:
         self.load_data_into_table("cog_functions", data)
 
 
-    def load_cdd_to_cog(self, data):
-        sql = (
-            "CREATE TABLE cdd_to_cog ( "
-            "cdd INT, cog_id INT);"
-        )
-        self.server.adaptor.execute(sql)
-        self.load_data_into_table("cdd_to_cog", data)
-
-
-    def get_cdd_to_cog(self):
-        query = (
-            "SELECT cdd, cog_id "
-            "FROM cdd_to_cog;"
-        )
-        results = self.server.adaptor.execute_and_fetchall(query)
-        hsh_results = {}
-        for line in results:
-            hsh_results[line[0]] = line[1]
-        return hsh_results
-
-    
     def load_cog_ref_data(self, data):
         sql = (
             "CREATE TABLE cog_names (cog_id INTEGER, function TEXT, description TEXT, "
