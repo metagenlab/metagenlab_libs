@@ -299,7 +299,7 @@ class DB:
             print("add molis!")
             df_molis = self.get_fastq_and_sample_data(df["fastq_id"].to_list()).set_index("fastq_id")
             df = df.set_index("fastq_id").join(df_molis, on="fastq_id", rsuffix='_other', how="left")
-            df = df[["molis_alias", "molis_id","sample_name","name", "value", "run_name", "analysis_id"]]
+            df = df[["molis_alias","sample_name","name", "value", "run_name", "analysis_id"]]
 
         return df
 
