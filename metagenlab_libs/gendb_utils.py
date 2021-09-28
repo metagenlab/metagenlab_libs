@@ -159,7 +159,7 @@ class DB:
     def get_molis_id2fastq_id(self,):
 
         sql = ''' 
-        select fastq_id, molis_id from GEN_fastqtosample t1
+        select fastq_id, molis_alias from GEN_fastqtosample t1
         inner join GEN_sample t2 on t1.sample_id=t2.id
         '''
         self.cursor.execute(sql,) 
@@ -168,7 +168,7 @@ class DB:
     def get_molis_id2sample_id_list(self,):
 
         sql = ''' 
-        select molis_id, id from GEN_sample
+        select molis_alias, id from GEN_sample
         '''
 
         molis_id2sample_list = {}
@@ -299,7 +299,7 @@ class DB:
             print("add molis!")
             df_molis = self.get_fastq_and_sample_data(df["fastq_id"].to_list()).set_index("fastq_id")
             df = df.set_index("fastq_id").join(df_molis, on="fastq_id", rsuffix='_other', how="left")
-            df = df[["molis_id", "sample_name","name", "value", "run_name", "analysis_id"]]
+            df = df[["molis_alias", "molis_id","sample_name","name", "value", "run_name", "analysis_id"]]
 
         return df
 
@@ -1093,7 +1093,7 @@ class DB:
         if add_molis:
             df_molis = self.get_fastq_and_sample_data(df["fastq_id"].to_list()).set_index("fastq_id")
             df = df.set_index("fastq_id").join(df_molis, on="fastq_id", rsuffix='_other')
-            df = df[["molis_id", "name", "value", "run_name"]]
+            df = df[["molis_alias", "molis_id", "name", "value", "run_name"]]
 
         return df
 
@@ -1167,7 +1167,7 @@ class DB:
         # left join because some fastq won't have match in the sample table
         # possible problem: fastq prefix match with multiple samples from different species
         # in that case: remove species name
-        sql = f'''select distinct t1.id as fastq_id,fastq_prefix,R1,R2,taxonomy,molis_id, sample_name,t4.run_name,t2.sample_id from GEN_fastqfiles t1 
+        sql = f'''select distinct t1.id as fastq_id,fastq_prefix,R1,R2,taxonomy,molis_alias, sample_name,t4.run_name,t2.sample_id from GEN_fastqfiles t1 
                 left join GEN_fastqtosample t2 on t1.id=t2.fastq_id
                 left join GEN_sample t3 on t2.sample_id=t3.id
                 inner join GEN_runs t4 on t1.run_id=t4.id
@@ -1457,8 +1457,8 @@ class DB:
             print("TEST")
             # search sample table 
             # sample_name, xlsx_sample_id, molis_id
-            sql_sample = f'''select t1.id,t2.fastq_id,sample_name, xlsx_sample_id, molis_id from GEN_sample t1 
-                            inner join GEN_fastqtosample t2 on t1.id=t2.sample_id where t1.id={self.spl} or sample_name={self.spl} or xlsx_sample_id={self.spl} or molis_id={self.spl} limit 1000'''
+            sql_sample = f'''select t1.id,t2.fastq_id,sample_name, xlsx_sample_id, molis_alias from GEN_sample t1 
+                            inner join GEN_fastqtosample t2 on t1.id=t2.sample_id where t1.id={self.spl} or sample_name={self.spl} or xlsx_sample_id={self.spl} or molis_alias={self.spl} limit 1000'''
 
             # search metadata fastq 
             sql_fastq_metadata = f'''select t2.sample_id,t1.fastq_id, value,t3.name from GEN_fastqfilesmetadata t1 
@@ -1489,7 +1489,7 @@ class DB:
 
             nr_fastq_list =  [str(i) for i in set(nr_fastq_list)]
 
-            detail_df = self.get_fastq_and_sample_data(nr_fastq_list)[["fastq_id","fastq_prefix","run_name","taxonomy","molis_id", "sample_name"]].set_index("fastq_id")
+            detail_df = self.get_fastq_and_sample_data(nr_fastq_list)[["fastq_id","fastq_prefix","run_name","taxonomy","molis_alias", "sample_name"]].set_index("fastq_id")
 
             if not hits_sample_metadata_df.empty:
                 print("not empty!")
