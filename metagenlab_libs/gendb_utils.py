@@ -262,7 +262,7 @@ class DB:
             res_filter_sample += f' and t6.analysis_id not in ({metadata_filter})' 
         
         sql_fastq = f'''
-            select distinct t1.fastq_id, t2.name,t1.value,run_name from GEN_fastqfilesmetadata t1 
+            select distinct t1.fastq_id, t2.name,t1.value,run_name, t1.analysis_id from GEN_fastqfilesmetadata t1 
             inner join GEN_term t2 on t1.term_id=t2.id 
             inner join GEN_fastqfiles t3 on t1.fastq_id=t3.id 
             inner join GEN_runs t4 on t3.run_id=t4.id 
@@ -284,7 +284,7 @@ class DB:
             
         df_fastq = pandas.read_sql(sql_fastq, self.conn)
         df_samples = pandas.read_sql(sql_sample, self.conn).set_index("fastq_id")
-        print("HEAD", df_samples.head())
+        print("HEAD", df_fastq.head())
         
         if fastq_intersection:
             intersection = set(df_fastq["fastq_id"].to_list()).intersection(set(df_samples.index.to_list()))
@@ -292,11 +292,14 @@ class DB:
 
         df = pandas.concat([df_fastq, df_samples.reset_index()])
         
+        print("HEAD-combined")
+        print(df["analysis_id"].to_list())
+
         if add_molis:
             print("add molis!")
             df_molis = self.get_fastq_and_sample_data(df["fastq_id"].to_list()).set_index("fastq_id")
             df = df.set_index("fastq_id").join(df_molis, on="fastq_id", rsuffix='_other', how="left")
-            df = df[["molis_id", "sample_name","name", "value", "run_name"]]
+            df = df[["molis_id", "sample_name","name", "value", "run_name", "analysis_id"]]
 
         return df
 
@@ -772,7 +775,7 @@ class DB:
 
         return df_mut
 
-    def get_weekly_genome_count(self, qc_filter=["PASSED"], to_dict=True):
+    def get_weekly_genome_count(self, qc_filter=["PASSED"], to_dict=True, start_date=False):
         import datetime
         filter = '","'.join(qc_filter)
 
@@ -788,11 +791,16 @@ class DB:
 
         df["registration_date"] = [datetime.datetime.strptime(i, '%Y-%m-%d') for i in df["registration_date"]]
 
+        if start_date:
+            df = df[df["registration_date"] >= start_date]
+
         df['week'] = df['registration_date'].dt.isocalendar().week
 
         df['year'] = df['registration_date'].dt.isocalendar().year
 
-        df["year_week"] = df['year'].astype(str).str.cat(df['week'].astype(str),sep=" - ")
+        week2label = {f'{row.year}-{row.week}':self.week_format(row.year, row.week) for n, row in df[["year", "week"]].drop_duplicates().iterrows()}
+
+        df["year_week"] = [week2label[f'{row.year}-{row.week}'] for n,row in df.iterrows()]
 
         df = df.groupby(["year","week","year_week"]).count()[["registration_date"]].reset_index()
         df.columns = ["year","week","year_week", "n_genomes"]
@@ -801,6 +809,139 @@ class DB:
             return df.set_index(["year_week"]).to_dict()["n_genomes"]
         else:
             return df
+
+
+    def plot_metadata_prevalence(self,
+                                subproject_id_list=["137", "167"],
+                                term_name="pangolin_lineage",
+                                highlight='B.1.1.7',
+                                qc_filter = ["PASSED"],
+                                percent_or_absolute='absolute', 
+                                plot_type='area',
+                                hide_lowfreq=20,
+                                hide_absolute=True,
+                                start_date=None):
+        '''
+        Plot counts or percentage by week for the target <term_name> (e.g pangolin_lineage, qc_status)
+        possibility to combined unfrequent values into a single category by using the hide_lowfreq parameter. 
+        <hide_lowfreq> is by default a fraction of the total (e.g 0.01 = 1 percent). 
+        If <hide_absolute> is set to true, then <hide_lowfreq> is considered as an absolute number 
+        (e-g all <term_name> with less than 20 entries in total will be grouped)
+        The <highlight> can be used to combine all the other values of <term_name> in a single 
+        category (e.g B.1.1.7 vs all the other lineages)
+        '''
+
+        import datetime
+        import plotly.express as px
+
+        df_metadata = self.get_fastq_metadata_list_v2(subproject_id_list=subproject_id_list, term_list=["registration_date", "qc_status",term_name],fastq_intersection=True)
+
+        df_metadata = df_metadata[["fastq_id", "name","value"]].drop_duplicates().pivot_table(index=["fastq_id"], columns="name",values="value", # , "molis_id"
+                                     aggfunc=lambda x: ' '.join(x))
+
+        df_metadata = df_metadata[df_metadata["registration_date"].notnull()] 
+        df_metadata = df_metadata[df_metadata["qc_status"].isin(qc_filter)] 
+        if start_date:
+            df_metadata = df_metadata[df_metadata['registration_date'] >= start_date]
+
+        df_metadata["registration_date"] = [datetime.datetime.strptime(i, '%Y-%m-%d') for i in df_metadata["registration_date"]]
+
+        df_metadata['week'] = df_metadata['registration_date'].dt.isocalendar().week
+
+        df_metadata['year'] = df_metadata['registration_date'].dt.isocalendar().year
+
+        week2label = {f'{row.year}-{row.week}':self.week_format(row.year, row.week) for n, row in df_metadata[["year", "week"]].drop_duplicates().iterrows()}
+
+        df_metadata["year_week"] = [week2label[f'{row.year}-{row.week}'] for n,row in df_metadata.iterrows()]
+
+        if hide_lowfreq:
+            value2count = df_metadata.groupby([term_name]).count()["year"].to_dict()
+            total = sum(value2count.values())
+            if not hide_absolute:
+                value2percent = {i:value2count[i]/float(total) for i in value2count}
+                remove = [i for i in value2percent if (value2percent[i] < hide_lowfreq)]
+            else:
+                remove = [i for i in value2count if (value2count[i] < hide_lowfreq)]
+            df_metadata[term_name][df_metadata[term_name].isin(remove)] = 'other'
+
+        if highlight:
+            df_metadata = df_metadata[df_metadata[term_name]==highlight] 
+
+        df_metadata_count = df_metadata.groupby(["year_week", term_name]).count()["year"].reset_index()
+        df_metadata_count.columns = ["year_week",term_name,"absolute"]
+
+        year_week_genome_count = self.get_weekly_genome_count(qc_filter=qc_filter, to_dict=False, start_date=start_date)
+
+        order = year_week_genome_count[["year", "week", "year_week"]].drop_duplicates().sort_values(by=['year', 'week'])
+
+        year_week2n_genomes = year_week_genome_count.set_index(["year_week"]).to_dict()["n_genomes"]
+
+        df_metadata_count["percentage"] = [(row.absolute/year_week2n_genomes[row.year_week])*100 for n,row in df_metadata_count.iterrows()]
+
+        for week in year_week2n_genomes:
+            if week not in df_metadata_count["year_week"].to_list():
+                df_metadata_count = df_metadata_count.append({'year_week': week, "absolute":0, "percentage": 0}, ignore_index=True)
+
+
+        df_metadata_count = df_metadata_count.fillna(0)
+
+        unique_factors = list(set(df_metadata_count[term_name].to_list())) 
+        if len(unique_factors) > 10:
+            color_map = px.colors.qualitative.Light24
+        else:
+            color_map = px.colors.qualitative.Plotly
+
+        if plot_type== 'area':
+            fig = px.area(df_metadata_count, 
+                        x="year_week", 
+                        y=percent_or_absolute, 
+                        color=term_name,
+                        template='plotly_white',
+                        category_orders={"year_week": order["year_week"].to_list(), },
+                        color_discrete_sequence=color_map)
+            fig.update_traces(line_width=0)
+        else:
+            fig = px.bar(df_metadata_count, 
+                        x="year_week", 
+                        y=percent_or_absolute, 
+                        color=term_name,
+                        template='plotly_white', 
+                        category_orders={"year_week": order["year_week"].to_list()},
+                        color_discrete_sequence=color_map)
+
+        fig.update_xaxes(
+                tickangle = -45,
+                title_font = {"size": 16},
+                title_standoff = 25)
+
+        fig.update_yaxes(
+                title_font = {"size": 16},
+                title_standoff = 25)
+
+        fig.update_xaxes(title_text="Week")
+        
+        if percent_or_absolute == 'percentage':
+            fig.update_yaxes(title_text="percentage of genomes")
+        else:
+            fig.update_yaxes(title_text="Number of genomes")
+
+        for trace in fig['data']: 
+            if(trace['name'] == '0'): trace['showlegend'] = False
+
+        return fig
+
+
+    def get_date_range_from_week(self, p_year,p_week):
+        import datetime
+        import time
+        firstdayofweek = datetime.datetime.strptime(f'{p_year}-W{int(p_week )}-1', "%Y-W%W-%w").date()
+        lastdayofweek = firstdayofweek + datetime.timedelta(days=6.9)
+        return firstdayofweek, lastdayofweek
+
+    def week_format(self, year, week_number):
+        monday, sunday = self.get_date_range_from_week(str(year), str(week_number))
+        return f'{year}-{week_number}: {monday.strftime("%d.%m")}-{sunday.strftime("%d.%m")}'
+
 
 
     def plot_mutation_prevalence(self, 
@@ -816,8 +957,6 @@ class DB:
 
         df_metadata = self.get_fastq_metadata_list_v2(fastq_filter=df_mut.fastq_id.to_list(), term_list=[color_factor])
 
-        print("COLs", df_metadata.columns)
-
         df_metadata = df_metadata[["fastq_id", "name","value"]].drop_duplicates()
 
         df_mut = df_mut.merge(df_metadata, on='fastq_id', how='left')
@@ -829,7 +968,10 @@ class DB:
         df_mut['week'] = df_mut['registration_date'].dt.isocalendar().week
 
         df_mut['year'] = df_mut['registration_date'].dt.isocalendar().year
-        df_mut["year_week"] = df_mut['year'].astype(str).str.cat(df_mut['week'].astype(str),sep=" - ")
+
+        week2label = {f'{row.year}-{row.week}':self.week_format(row.year, row.week) for n, row in df_mut[["year", "week"]].drop_duplicates().iterrows()}
+
+        df_mut["year_week"] = [week2label[f'{year}-{week}'] for n,row in df_mut.iterrows()]
 
         df_mut_count = df_mut.groupby(["year_week", "value"]).count()["year"].reset_index()
 
@@ -896,9 +1038,9 @@ class DB:
         res_filter_sample = ''
         if term_list:
             print("term_list", term_list)
-            term_filter = '","'.join(term_list)
-            res_filter_fastq += f'and t2.name in ("{term_filter}")\n' 
-            res_filter_sample += f'and t2.name in ("{term_filter}")\n' 
+            term_filter = '\',\''.join(term_list)
+            res_filter_fastq += f'and t2.name in (\'{term_filter}\')\n' 
+            res_filter_sample += f'and t2.name in (\'{term_filter}\')\n' 
         if fastq_filter:
             fastq_filter_str = ','.join([str(i) for i in fastq_filter])
             res_filter_fastq += f'and fastq_id in ({fastq_filter_str})\n'
@@ -912,11 +1054,11 @@ class DB:
             res_filter_fastq += f'and t1.value in ("{metadata_filter}")'
             res_filter_sample += f'and t1.value in ("{metadata_filter}")'
         if analysis_id_list:
-            metadata_filter = '","'.join(analysis_id_list)
+            metadata_filter = '","'.join([str(i) for i in analysis_id_list])
             res_filter_fastq += f'and (t1.analysis_id in ("{metadata_filter}") OR t1.analysis_id is NULL)'        
         if subproject_id_list:
-            metadata_filter = '","'.join(subproject_id_list)
-            res_filter_fastq += f'and t5.subproject_id in ("{metadata_filter}")'   
+            metadata_filter = ','.join([str(i) for i in subproject_id_list])
+            res_filter_fastq += f'and t5.subproject_id in ({metadata_filter})'   
         
         sql_fastq = f'''
             select distinct t5.analysis_id,fastq_id, t2.name,t1.value, run_name,t4.read_length from GEN_fastqfilesmetadata t1 
@@ -939,6 +1081,7 @@ class DB:
             '''
         print(sql_fastq)
         df_fastq = pandas.read_sql(sql_fastq, self.conn)
+        print("fastq df: ----", df_fastq)
         df_samples = pandas.read_sql(sql_sample, self.conn).set_index("fastq_id")
         
         if fastq_intersection:
