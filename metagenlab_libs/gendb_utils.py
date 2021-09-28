@@ -971,7 +971,7 @@ class DB:
 
         week2label = {f'{row.year}-{row.week}':self.week_format(row.year, row.week) for n, row in df_mut[["year", "week"]].drop_duplicates().iterrows()}
 
-        df_mut["year_week"] = [week2label[f'{year}-{week}'] for n,row in df_mut.iterrows()]
+        df_mut["year_week"] = [week2label[f'{row.year}-{row.week}'] for n,row in df_mut.iterrows()]
 
         df_mut_count = df_mut.groupby(["year_week", "value"]).count()["year"].reset_index()
 
