@@ -765,7 +765,7 @@ class DB:
 
         if subproject_id_list:
             project_filter = ','.join([str(i) for i in subproject_id_list])
-            res_project_filter += f'and t7.subproject_id in ({metadata_filter})'  
+            res_project_filter = f'and t7.subproject_id in ({project_filter})'  
         else:
             res_project_filter = ''  
 
@@ -775,7 +775,7 @@ class DB:
               ' inner join GEN_term t4 on t3.term_id=t4.id' \
               ' inner join GEN_fastqfilesmetadata t5 on t2.fastq_id=t5.fastq_id' \
               ' inner join GEN_term t6 on t5.term_id=t6.id' \
-              ' left join GEN_projectanalysis t7 on t1.analysis_id=t6.analysis_id ' \
+              ' left join GEN_projectanalysis t7 on t1.analysis_id=t7.analysis_id ' \
              f' where t4.name=\'registration_date\' and t6.name="qc_status" and t5.value in ("{filter}") ' \
              f' and t1.nucl_change="{nucl_change}" and alt_percent > {alt_freq_cutoff} {res_project_filter};'
         print(sql)
@@ -958,11 +958,11 @@ class DB:
                                  color_sample_metadata=False, 
                                  qc_filter = ["PASSED"],
                                  alt_freq_cutoff=70,
-                                 suproject_id_list=None):
+                                 subproject_id_list=None):
         import datetime
         import plotly.express as px
 
-        df_mut = self.mutation_prevalence(mutation, qc_filter=qc_filter, alt_freq_cutoff=alt_freq_cutoff, suproject_id_list=suproject_id_list)
+        df_mut = self.mutation_prevalence(mutation, qc_filter=qc_filter, alt_freq_cutoff=alt_freq_cutoff, subproject_id_list=subproject_id_list)
 
         df_metadata = self.get_fastq_metadata_list_v2(fastq_filter=df_mut.fastq_id.to_list(), term_list=[color_factor])
 
