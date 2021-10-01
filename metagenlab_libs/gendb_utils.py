@@ -756,7 +756,7 @@ class DB:
         return G, T, groups
 
 
-    def mutation_prevalence(self, nucl_change, qc_filter = ["PASSED"], alt_freq_cutoff=70, subproject_id_list=None):
+    def mutation_prevalence(self, mutation, mutation_type='nucl_change', qc_filter = ["PASSED"], alt_freq_cutoff=70, subproject_id_list=None):
         '''
         Return table of fastq_id with a target nucl_change with registration date
         '''
@@ -769,7 +769,7 @@ class DB:
         else:
             res_project_filter = ''  
 
-        sql = f'select distinct t1.fastq_id,t1.nucl_change, t3.value as registration_date from GEN_snps t1 ' \
+        sql = f'select distinct t1.fastq_id,t1.{mutation_type}, t3.value as registration_date from GEN_snps t1 ' \
               ' inner join GEN_fastqtosample t2 on t1.fastq_id=t2.fastq_id' \
               ' inner join GEN_samplemetadata t3 on t2.sample_id=t3.sample_id' \
               ' inner join GEN_term t4 on t3.term_id=t4.id' \
@@ -777,8 +777,8 @@ class DB:
               ' inner join GEN_term t6 on t5.term_id=t6.id' \
               ' left join GEN_projectanalysis t7 on t1.analysis_id=t7.analysis_id ' \
              f' where t4.name=\'registration_date\' and t6.name="qc_status" and t5.value in ("{filter}") ' \
-             f' and t1.nucl_change="{nucl_change}" and alt_percent > {alt_freq_cutoff} {res_project_filter};'
-        print(sql)
+             f' and t1.{mutation_type}="{mutation}" and alt_percent > {alt_freq_cutoff} {res_project_filter};'
+
         df_mut = pandas.read_sql(sql, self.conn) 
 
         return df_mut
@@ -795,7 +795,6 @@ class DB:
               f' where t4.name=\'registration_date\' and t6.name="qc_status" and t5.value in ("{filter}");' 
 
         df = pandas.read_sql(sql, self.conn) 
-
 
         df["registration_date"] = [datetime.datetime.strptime(i, '%Y-%m-%d') for i in df["registration_date"]]
 
@@ -958,11 +957,12 @@ class DB:
                                  color_sample_metadata=False, 
                                  qc_filter = ["PASSED"],
                                  alt_freq_cutoff=70,
-                                 subproject_id_list=None):
+                                 subproject_id_list=None,
+                                 mutation_type='nucl_change'):
         import datetime
         import plotly.express as px
 
-        df_mut = self.mutation_prevalence(mutation, qc_filter=qc_filter, alt_freq_cutoff=alt_freq_cutoff, subproject_id_list=subproject_id_list)
+        df_mut = self.mutation_prevalence(mutation, qc_filter=qc_filter, alt_freq_cutoff=alt_freq_cutoff, subproject_id_list=subproject_id_list, mutation_type=mutation_type)
 
         df_metadata = self.get_fastq_metadata_list_v2(fastq_filter=df_mut.fastq_id.to_list(), term_list=[color_factor])
 
