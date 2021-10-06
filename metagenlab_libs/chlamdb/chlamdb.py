@@ -383,8 +383,6 @@ def setup_cog(db, cog_dir):
 
     cog_fun_data = []
     for line_no, line in enumerate(fun_names_file):
-        if line_no==0:
-            continue
         function, random_str, description = line.split("\t") 
         cog_fun_data.append( (function.strip(), description.strip()) )
     db.load_cog_fun_data(cog_fun_data)
