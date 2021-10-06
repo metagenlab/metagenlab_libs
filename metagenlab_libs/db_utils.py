@@ -3,6 +3,9 @@ import sys
 
 from BioSQL import BioSeqDatabase
 from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord #added
+from Bio.SeqFeature import SeqFeature, FeatureLocation #added
+from chlamdb.biosqldb.mysqldb_plot_genomic_feature import plot_multiple_regions_crosslink
 
 from Bio.Seq import Seq
 from Bio.SeqUtils import GC
@@ -166,8 +169,8 @@ class DB:
             "GROUP BY orthogroup;" 
         )
         results = self.server.adaptor.execute_and_fetchall(query)
-        acc = (line[0] for line in results if min_size==None or line[1]>=min_size)
-        return acc
+       
+        return results
 
     def get_all_sequences_for_orthogroup(self, orthogroup):
         from Bio import SeqRecord
@@ -1145,7 +1148,7 @@ class DB:
         return gc_term_id
 
 
-    def get_genomes_description(self, lst_plasmids=False):
+    def get_genomes_description(self, lst_plasmids=True):
         """
         Returns the description of the genome as it has been read from the genbank
         files, indexed by taxon_id. The output also contains a flag has_plasmid
@@ -1171,12 +1174,7 @@ class DB:
             "GROUP BY taxon_id;" 
         )
         descr = self.server.adaptor.execute_and_fetchall(query)
-        columns = ["taxon_id", "description"]
-        if lst_plasmids:
-            columns.append("has_plasmid")
-        else:
-            # remove the third row to keep pandas happy
-            descr = ((taxon_id, entry_desc) for taxon_id, entry_desc, _ in descr)
+        columns = ["taxon_id", "description", "has_plasmid"]
 
         return DB.to_pandas_frame(descr, columns).set_index(["taxon_id"])
 
@@ -1192,7 +1190,7 @@ class DB:
         """
 
         query = (
-            "SELECT entry.taxon_id, COUNT(*) "
+            "SELECT entry.taxon_id, entry.taxon_id, COUNT(*) "
             " FROM seqfeature AS seq "
             " INNER JOIN term AS cds ON cds.term_id = seq.type_term_id AND cds.name=\"CDS\" "
             " INNER JOIN bioentry AS entry ON entry.bioentry_id = seq.bioentry_id " 
@@ -1214,12 +1212,27 @@ class DB:
         )
         all_other_results = self.server.adaptor.execute_and_fetchall(query)
 
-        df_n_prot = DB.to_pandas_frame(n_prot_results, ["taxon_id", "n_prot"]).set_index("taxon_id")
+        df_n_prot = DB.to_pandas_frame(n_prot_results, ["taxon_id", "id", "n_prot"]).set_index("taxon_id")
         df_n_contigs = DB.to_pandas_frame(n_contigs, ["taxon_id", "n_contigs"]).set_index("taxon_id")
         df_stats = DB.to_pandas_frame(all_other_results, cols).set_index("taxon_id")
         return df_n_prot.join(df_n_contigs).join(df_stats)
 
+    def get_contigs_to_seqid (self, genome):
+        
 
+        query = (
+            "SELECT bioentry.name, bioentry.description, ids.seqfeature_id "
+			"FROM seqfeature as ids "
+			"JOIN bioentry ON bioentry.bioentry_id=ids.bioentry_id "
+            "WHERE bioentry.taxon_id=?"
+        )
+        contigs_seqids = self.server.adaptor.execute_and_fetchall(query, [genome])
+        df_contigs_seqid = DB.to_pandas_frame(contigs_seqids, ["contig", "description", "seqid"]).set_index("seqid")
+        
+        return df_contigs_seqid
+
+    
+    
     def get_accession_to_entry(self):
         query = (
             "SELECT accession, bioentry_id FROM bioentry;"
@@ -1914,6 +1927,7 @@ class DB:
         
         return df_merged
         
+
     def get_identity_closest_homolog(self, reference_taxid, target_taxids):
         
         targets = ','.join([str(i) for i in target_taxids])
@@ -1938,9 +1952,6 @@ class DB:
         # keep homolog with the highest identity
         #df_pivot = df.pivot_table(index=["seqfeature_id_1"], columns="target_taxid",values="identity", aggfunc=lambda x: max(x))
         return df
-    
-    #################
-    
     
 
     def get_pfam_def(self, pfam_ids, add_ttl_count=False):
@@ -2078,19 +2089,19 @@ class DB:
 
 
     def gen_cog_where_clause(self, search_on, entries):
-        entries = self.gen_placeholder_string(entries)
+            entries = self.gen_placeholder_string(entries)
 
-        if search_on=="bioentry":
-            where_clause = f" entry.bioentry_id IN ({entries}) "
-        elif search_on=="seqid":
-            where_clause = f" hsh.seqid IN ({entries}) "
-        elif search_on=="cog":
-            where_clause = f" cogs.cog_id IN ({entries}) "
-        elif search_on=="taxid":
-            where_clause = f" entry.taxon_id IN ({entries}) "
-        else:
-            raise RuntimeError(f"Searching on {search_on} is not supported")
-        return where_clause
+            if search_on=="bioentry":
+                where_clause = f" entry.bioentry_id IN ({entries}) "
+            elif search_on=="seqid":
+                where_clause = f" hsh.seqid IN ({entries}) "
+            elif search_on=="cog":
+                where_clause = f" cogs.cog_id IN ({entries}) "
+            elif search_on=="taxid":
+                where_clause = f" entry.taxon_id IN ({entries}) "
+            else:
+                raise RuntimeError(f"Searching on {search_on} is not supported")
+            return where_clause
 
 
     # Get all cog hits for a given list of bioentries
@@ -2105,8 +2116,7 @@ class DB:
     #   seqid1 cog1
     #   seqid2 cog2
     #   seqid3 cog3
-    def get_cog_hits(self, ids, indexing="bioentry", search_on="bioentry",
-            keep_taxid=False, plasmids=None):
+    def get_cog_hits(self, ids, indexing="bioentry", search_on="bioentry", keep_taxid=False, plasmids=None):
 
         where_clause = self.gen_cog_where_clause(search_on, ids)
         if indexing=="seqid":
@@ -2190,6 +2200,40 @@ class DB:
         results = self.server.adaptor.execute_and_fetchall(sql)
         return {filename: entry_id for filename, entry_id in results}
 
+    def count_files(self):
+        sql = ("SELECT COUNT(*)"
+                "FROM filenames;"
+        )
+        number = str(self.server.adaptor.execute_and_fetchall(sql))
+        return number [2]
+
+    def count_orthogroups(self):
+        sql = ("SELECT COUNT(*)"
+                "FROM filenames;"
+        )
+        number = str(self.server.adaptor.execute_and_fetchall(sql))
+        return number [2]
+
+    def get_taxon_id_to_filenames(self):
+        sql = (
+            f"SELECT filename, taxon_id FROM filenames;"
+        )
+        hsh_entry_to_filenames = {}
+        results = self.server.adaptor.execute_and_fetchall(sql)
+        return {entry_id: filename for filename, entry_id in results}
+
+    def get_bioentry_id_to_plasmid_contigs(self):
+        sql = (
+            "SELECT bioentry_id, accession "
+            "FROM bioentry "
+            "WHERE bioentry_id IN (SELECT bioentry_qualifier_value.bioentry_id "
+            "FROM bioentry_qualifier_value "
+            "WHERE bioentry_qualifier_value.term_id=47 AND bioentry_qualifier_value.value=1) "
+        )
+        bioentry_id_to_plasmid_contigs = {}
+        results = self.server.adaptor.execute_and_fetchall(sql)
+        return {bioentry_id: accession for bioentry_id, accession in results}
+    
 
     def load_chlamdb_config_tables(self, entries):
         sql = (
@@ -2261,3 +2305,68 @@ class DB:
         params = {"chlamdb.db_type" : db_type, "chlamdb.db_name" : db_name}
         return DB.load_db(db_name, params)
 
+    def location2sequence(self, accession, start, end):
+        sql = (
+            "select substr(seq, %s, %s) from biosequence "
+            "inner join bioentry on bioentry.bioentry_id=biosequence.bioentry_id "
+            "inner join biodatabase on bioentry.biodatabase_id=biodatabase.biodatabase_id "
+            "where accession='%s' " % (start, end, accession)
+            )
+        
+        #sequence = str(self.server.adaptor.execute_and_fetchall(sql))
+        #return sequence 
+        sequence = str(self.server.adaptor.execute_and_fetchall(sql))
+        return sequence [0]
+
+
+    def location2plot(self,
+                  accession,
+                  out_name,
+                  start,
+                  end,
+                  cache,
+                  color_locus_list = [],
+                  region_highlight=[]):
+        import copy
+        if start < 0:
+            start=0
+        key = accession
+        biorecord = cache.get(key)
+        if biorecord:
+            print (key, "in memory")
+        else:
+            print (key, "NOT in memory")
+            cache_time = None
+
+            db=self.server[self.db_name]
+            new_record = db.lookup(accession=accession)
+            new_record_reformat = SeqRecord(Seq(new_record.seq.data),
+                                                         id=new_record.id, name=new_record.name,
+                                                         description=new_record.description,
+                                                         dbxrefs =new_record.dbxrefs,
+                                                         features=new_record.features,
+                                                         annotations=new_record.annotations)
+            cache.set(key, new_record_reformat, cache_time)
+            biorecord = cache.get(key)
+            if biorecord:
+                print (key, "in memory")
+
+        fake_feature = copy.copy(biorecord.features[1])
+        fake_feature.type = "tblast_target"
+        print(region_highlight[0], region_highlight[1])
+        fake_feature.location = FeatureLocation(region_highlight[0], region_highlight[1], strand=0)
+        biorecord.features.append(fake_feature)
+        print("start-end",start,end)
+        sub_record = biorecord[start:end]
+        print(sub_record.features)
+        if len(sub_record.features) > 0:
+            sub_record.features = ([sub_record.features[-1]] + sub_record.features[0:-1])
+        region_locus_list = plot_multiple_regions_crosslink([],
+                                                        [sub_record],
+                                                        [False],
+                                                        out_name,
+                                                        color_locus_list=color_locus_list)
+        return region_locus_list
+
+
+   
