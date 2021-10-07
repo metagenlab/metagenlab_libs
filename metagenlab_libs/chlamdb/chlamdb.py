@@ -24,11 +24,13 @@
 # Date: 29.10.2020
 
 import os
+import sys
 import db_utils
 import argparse
 
 import queue
 import threading
+import time
 
 # to be removed in favor of a local version
 from Bio.KEGG import REST
@@ -44,7 +46,7 @@ MAX_N_QUERIES = 10
 # number of threads that will be used simultaneously
 # to download the ko genes. 5 seems a good compromise
 # between being blacklisted and speed
-DEFAULT_N_THREADS = 5
+DEFAULT_N_THREADS = 1
 DEFAULT_KO_DIR = "tmp"
 
 def create_data_table(db):
@@ -268,6 +270,8 @@ def download_ko_genes(gene_queue, tmp_dir):
             output_file = open(tmp_dir+"/"+queries[0], "w")
             output_file.write(text_version)
             output_file.close()
+            # pause to not overload the server
+            time.sleep(5)
         except Exception as e:
             print(e)
             print(f"ERROR: Could not download one of the following kegg ")
@@ -464,6 +468,7 @@ if args.get("download_ko_files", False):
     print("Just insist until completion")
     ko_dir = args.get("ko_dir")
     download_ko_files(ko_dir)
+    sys.exit(0)
 
 db = None
 if not args.get("skip_biodb"):
