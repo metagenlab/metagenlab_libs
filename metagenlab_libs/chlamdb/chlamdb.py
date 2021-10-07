@@ -25,7 +25,7 @@
 
 import os
 import sys
-import db_utils
+from metagenlab_libs import db_utils
 import argparse
 
 import queue
@@ -114,7 +114,7 @@ def setup_biodb(kwargs):
 class Record(object):
     def __init__(self):
         self.entry = ""
-        self.name = []
+        self.name = ""
         self.definition = ""
         self.modules = []
         self.pathways = []
@@ -169,7 +169,7 @@ class Pathway(object):
         self.descr  = descr
 
     def simplified_entry(self):
-        return int(self.entry[len("ko"):])
+        return int(self.entry[len("map"):])
 
     def __hash__(self):
         return hash(self.entry)
@@ -216,8 +216,7 @@ def parse_gene(handle):
             words = data.split()
             record.entry = words[0]
         elif keyword == "NAME        ":
-            data = data.strip(";")
-            record.name.append(data)
+            record.name = data
         elif keyword == "DEFINITION  ":
             record.definition = data
         elif keyword == "MODULE      ":
@@ -357,7 +356,7 @@ def load_KO_references(db, params, ko_dir=DEFAULT_KO_DIR):
     db.load_ko_module([(m.simplified_entry(), m.descr, m.get_definition(), m.is_signature(), m.cat_id, m.subcat_id)
         for m in hsh_modules.values()])
     db.load_ko_pathway([(p.simplified_entry(), p.descr) for p in pathway_set])
-    db.load_ko_def([(gene.simplified_entry(), gene.definition) for gene in genes])
+    db.load_ko_def([(gene.simplified_entry(), gene.name) for gene in genes])
 
     ko_to_path = []
     ko_to_module = []

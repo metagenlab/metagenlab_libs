@@ -5,7 +5,6 @@ from BioSQL import BioSeqDatabase
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord #added
 from Bio.SeqFeature import SeqFeature, FeatureLocation #added
-from chlamdb.biosqldb.mysqldb_plot_genomic_feature import plot_multiple_regions_crosslink
 
 from Bio.Seq import Seq
 from Bio.SeqUtils import GC
@@ -2319,6 +2318,7 @@ class DB:
         return sequence [0]
 
 
+"""
     def location2plot(self,
                   accession,
                   out_name,
@@ -2367,6 +2367,7 @@ class DB:
                                                         out_name,
                                                         color_locus_list=color_locus_list)
         return region_locus_list
+"""
 
 
    
