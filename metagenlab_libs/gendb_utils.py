@@ -313,22 +313,28 @@ class DB:
 
 
 
-    def plot_phylogeny_from_parwise_snps_with_context(self, analysis_id):
+    def plot_phylogeny_from_parwise_snps_with_context(self, snp_table_id, metadata_id):
 
+        from GEN.models import AnalysisMetadata
         # retrieve data 
 
         backup_folder = self.AIRFLOW_CONFIG["OUTPUT_FOLDER_BASE"]
     
     
         # retrieve snp table and metadata table location 
-        pairsnp_filtered_path = os.path.join(backup_folder, self.get_analysis_metadata("pairsnp_filtered",analysis_id_list=[analysis_id])[analysis_id])
-        pairsnp_metadata_path = os.path.join(backup_folder, self.get_analysis_metadata("pairsnp_metadata",analysis_id_list=[analysis_id])[analysis_id])
+        #pairsnp_filtered_path = os.path.join(backup_folder, self.get_analysis_metadata("pairsnp_filtered",analysis_id_list=[analysis_id])[analysis_id])
+        #pairsnp_metadata_path = os.path.join(backup_folder, self.get_analysis_metadata("pairsnp_metadata",analysis_id_list=[analysis_id])[analysis_id])
+
+        pairsnp_filtered_path = os.path.join(backup_folder, AnalysisMetadata.objects.filter(id=snp_table_id)[0].value)
+        pairsnp_metadata_path = os.path.join(backup_folder, AnalysisMetadata.objects.filter(id=metadata_id)[0].value)
 
         print("path", pairsnp_filtered_path)
         print("path", pairsnp_metadata_path)
 
         pairsnp_filtered_df = pandas.read_csv(pairsnp_filtered_path, sep="\t", header=0)[["genome_1", "genome_2", "SNPs"]]
         pairsnp_filtered_df_reverse = pandas.read_csv(pairsnp_filtered_path, sep="\t", header=0)[["genome_2", "genome_1", "SNPs"]]
+
+
         pairsnp_filtered_df_reverse.columns = ["genome_1", "genome_2", "SNPs"]
         pairsnp_filtered_df = pairsnp_filtered_df.append(pairsnp_filtered_df_reverse)
         pairsnp_metadata_df = pandas.read_csv(pairsnp_metadata_path, sep="\t", header=0, index_col="strain")
@@ -347,7 +353,7 @@ class DB:
 
         snp_matrix = pandas.pivot(pairsnp_filtered_df, index="genome_1", columns="genome_2", values="SNPs").fillna(20)
 
-        snp_matrix.to_csv("/media/IMU/GEN/PROJECTS/NOSOCOV/Analysis/phylogeny_test_LIMS_with_context_v2.csv", sep="\t")
+        #snp_matrix.to_csv("/media/IMU/GEN/PROJECTS/NOSOCOV/Analysis/phylogeny_test_LIMS_with_context_v3.csv", sep="\t")
 
         cols = set(snp_matrix.columns)
         rows = set(snp_matrix.index)
@@ -492,8 +498,8 @@ class DB:
         print("plotting...")
         ete_tree.remove_dots()
         os.environ['QT_QPA_PLATFORM']='offscreen'
-        ete_tree.tree.render("/media/IMU/GEN/PROJECTS/NOSOCOV/Analysis/phylogeny_test_LIMS_external_v2.svg",tree_style=ete_tree.tss, w=183, units="mm")
-
+        
+        return ete_tree
 
 
     def plot_phylogeny_from_parwise_snps(self, analysis_id, group_list):
@@ -1698,13 +1704,13 @@ class DB:
 
     def get_fastq(self, run_name=False):
         
-        sql = 'select t1.id,run_name,date_run,qc,fastq_prefix,xlsx_sample_ID,taxonomy,date_received,read_length,t1.id from GEN_fastqfiles t1 ' \
+        sql = 'select t1.id,run_name,date_run,qc,fastq_prefix,xlsx_sample_ID,sample_name,taxonomy,date_received,read_length,t1.id from GEN_fastqfiles t1 ' \
             ' inner join GEN_runs t2 on t1.run_id=t2.id ' \
             ' left join GEN_fastqtosample t3 on t1.id=t3.fastq_id' \
             ' left join GEN_sample t4 on t3.sample_id=t4.id'
 
         sql = '''
-        select t1.id as fastq_id, run_name,t5.status,fastq_prefix,read_length,t3.id as sample_id,taxonomy,date_received,t4.run_date,t1.id,t4.qc_id from GEN_fastqfiles t1 
+        select t1.id as fastq_id, run_name,t5.status,fastq_prefix,sample_name, read_length,t3.id as sample_id,taxonomy,date_received,t4.run_date,t1.id,t4.qc_id from GEN_fastqfiles t1 
         left join GEN_fastqtosample t2 on t1.id=t2.fastq_id 
         left join GEN_sample t3 on t2.sample_id=t3.id 
         left join GEN_runs t4 on t1.run_id=t4.id
