@@ -314,6 +314,9 @@ def load_KO_references(db, params, ko_dir=DEFAULT_KO_DIR):
     genes = []
 
     for ko in os.listdir(ko_dir):
+        if not ko.startswith("ko:K"):
+            continue
+
         ko_file = open(ko_dir+"/"+ko, "r")
         for gene in parse_gene(ko_file):
             genes.append(gene)
