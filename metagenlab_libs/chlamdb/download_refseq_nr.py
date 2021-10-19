@@ -5,6 +5,7 @@
 
 import ftplib
 import re
+import io
 
 
 ftp = ftplib.FTP("ftp.ncbi.nih.gov")
@@ -18,6 +19,6 @@ nr_re = re.compile("complete.nonredundant_protein.(\d)*.protein.faa.gz")
 nr_filelist = (i for i in ftp.nlst() if not re.match(nr_re, i) is None)
 
 for f in nr_filelist:
-    output_file = open(f, "w")
+    output_file = open(f, "wb")
     ftp.retrbinary("RETR "+f, output_file.write)
     output_file.close()
