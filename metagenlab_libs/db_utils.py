@@ -136,19 +136,19 @@ class DB:
     def get_refseq_matches_info(self, match_ids):
         placeholder = self.gen_placeholder_string(match_ids)
         query = (
-            "SELECT match_id, accession, taxid, description "
+            "SELECT match_id, accession, organism, description "
             "FROM diamond_refseq_match_id "
             f"WHERE match_id IN ({placeholder});"
         )
         results = self.server.adaptor.execute_and_fetchall(query, match_ids)
-        df = DB.to_pandas_frame(results, ["match_id", "accession", "taxid", "description"])
+        df = DB.to_pandas_frame(results, ["match_id", "accession", "organism", "description"])
         return df.set_index("match_id")
 
 
     # Returns all refseq hits associated with a given orthogroup
     def get_diamond_match_for_og(self, og):
         query = (
-            "SELECT match_id.accession, match_id.taxid, hit.hit_count "
+            "SELECT match_id.accession, match_id.organism, hit.hit_count "
             "FROM og_hits " 
             "INNER JOIN sequence_hash_dictionnary AS hsh ON hsh.seqid = og_hits.seqid "
             "INNER JOIN diamond_refseq AS hit ON hit.seq_hash = hsh.hsh "
@@ -271,7 +271,7 @@ class DB:
     def create_diamond_refseq_match_id(self):
         query = (
             "CREATE TABLE diamond_refseq_match_id ( "
-            "match_id INT, accession VARCHAR(200), taxid INT, description TEXT, length INT, "
+            "match_id INT, accession TEXT, organism TEXT, description TEXT, length INT, "
             "PRIMARY KEY(match_id));"
         )
         self.server.adaptor.execute(query,)
