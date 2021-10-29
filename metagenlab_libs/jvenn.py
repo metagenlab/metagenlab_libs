@@ -11,63 +11,64 @@ class Jvenn():
     '''
     
     
-    def __init__(self,
-                table_header_list,
-                href_prefix='',
-                href_sufix='',
-                table_id="jvenntable",
-                venn_div_id="venn_div",
-                table_div_id="venn_table"):
+    def __init__(self, venn_div_id="venn_div"):
         
-        '''
-        table_header_list: list of values to use as header to the table displayed under the plot.
-                           Should match data added with self.add_dictionnatry() 
-        href_prefix: hyperlink prefix for each value (optional): eg: chlamdb.ch/ ==> chlamdb.ch/<value>
-        href_prefix: hyperlink prefix for each value (optional): eg: /annotation ==> chlamdb.ch/<value>/annotation
-        '''
                 
         self.dico_string = ''
         
         self.COLOR_LIST = ["rgb(0,102,0)","rgb(90,155,212)","rgb(241,90,96)","rgb(250,220,91)","rgb(255,117,0)","rgb(192,152,83)"]
-                
-        self.annotation_column = '+ h[this.list[val]]'
         
-        self.table_header = f'''<table id="{table_id}" class="table table-striped"><thead class="thead-dark"><tr>%s</tr></thead><tbody>''' % ''.join([f"<th>{i}</th>" for i in table_header_list])
-        
-        self.jvenn_str = f'''  
+        self.venn_div_id = venn_div_id
+
+
+        self.callback = ''
+
+        self.callback_open_page = '''
+        ,fnClickCallback: function() {{
+            var value = this.listnames.join(",");
+            console.log("{url_template}" + value);
+            window.open("{url_template}" + value,"_self");
+            }}
+        '''
+
+        self.callback_table = '''
+        ,fnClickCallback: function() {{
+                        var value = '';
+                        value += '{table_header}';
+                        for (val in this.list) {{
+                            value += '<tr><td><a href="{href_prefix}' + this.list[val]+ '{href_sufix}' +'">'+ this.list[val]  +'</a></td>' {add_col} +'</tr>';
+                        }}
+                        value += '</tbody></table>';
+                        
+                        $("#{table_div_id}").html(value);
+                        
+                        $('#{table_id}').DataTable( {{
+                                dom: 'Bfrtip',
+                                "pageLength": 10,
+                                "searching": true,
+                                "bLengthChange": false,
+                                "paging":   true,
+                                "info": true
+                        }} );
+                }}
+        '''
+
+        self.jvenn_str = '''  
 var h = new Object();
 
-%s
+{dico_string}
 
 $(document).ready(function() {{
     $('#{venn_div_id}').jvenn({{
         shortNumber: false,
-        colors: %s,
-        series: %s,
+        colors: {colors},
+        series: {series},
         displayStat: true,
         displaySwitch: false,
         searchInput:  $("#search-field"),
         searchStatus: $("#search-status"),
-        searchMinSize: 1,
-        fnClickCallback: function() {{
-            var value = '';
-            value += '{self.table_header}';
-            for (val in this.list) {{
-                value += '<tr><td><a href="{href_prefix}' + this.list[val]+ '{href_sufix}' +'">'+ this.list[val]  +'</a></td>' %s +'</tr>';
-            }}
-            value += '</tbody></table>';
-            
-            $("#{table_div_id}").html(value);
-            
-            $('#{table_id}').DataTable( {{
-                    dom: 'Bfrtip',
-                    "pageLength": 10,
-                    "searching": true,
-                    "bLengthChange": false,
-                    "paging":   true,
-                    "info": true
-            }} );
-    }}
+        searchMinSize: 1
+        {click_callback}
     }});
 }});
         '''
@@ -75,7 +76,33 @@ $(document).ready(function() {{
 
         self.series = []
     
-    
+    def add_callback_link(self, url_template):
+
+        self.callback = self.callback_open_page.format(url_template=url_template)
+
+
+    def add_callback_table(self, 
+                           table_header_list=["accession"], 
+                           href_prefix='', 
+                           href_sufix='', 
+                           add_col='+ h[this.list[val]]', 
+                           table_div_id="venn_table", 
+                           table_id="venn_table_id"):
+        '''
+        table_header_list: list of values to use as header to the table displayed under the plot.
+                           Should match data added with self.add_dictionnatry() 
+        href_prefix: hyperlink prefix for each value (optional): eg: chlamdb.ch/ ==> chlamdb.ch/<value>
+        href_prefix: hyperlink prefix for each value (optional): eg: /annotation ==> chlamdb.ch/<value>/annotation
+        '''
+        table_header = f'''<table id="{table_id}" class="table table-striped"><thead class="thead-dark"><tr>%s</tr></thead><tbody>''' % ''.join([f"<th>{i}</th>" for i in table_header_list])
+
+        self.callback = self.callback_table.format(table_header=table_header, 
+                                                   href_prefix=href_prefix,
+                                                   href_sufix=href_sufix,
+                                                   add_col= add_col,
+                                                   table_div_id=table_div_id,
+                                                   table_id=table_id)
+
     def add_serie(self,
                   serie_name,
                   value_list):
@@ -104,15 +131,13 @@ $(document).ready(function() {{
         
         color_list = self.COLOR_LIST[0:len(self.series)]
         
-        if self.dico_string != '':
-            code = self.jvenn_str % (self.dico_string,
-                                     str(color_list),
-                                     serie_str,
-                                     self.annotation_column)
-        else:
-            code = self.jvenn_str % (self.dico_string,
-                                     str(color_list),
-                                     serie_str,
-                                     "")
-                                 
+        if self.callback == '':
+            # add basic table with only acession
+            self.add_callback_table(table_header_list=["accession"], href_prefix='', href_sufix='', add_col='', table_div_id="venn_table", table_id="venn_table_data")
+        code = self.jvenn_str.format(dico_string=self.dico_string,
+                                    venn_div_id=self.venn_div_id,
+                                    colors=str(color_list),
+                                    series=serie_str,
+                                    click_callback=self.callback)
+                                    
         return code

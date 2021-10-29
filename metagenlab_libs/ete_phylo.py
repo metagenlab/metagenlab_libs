@@ -80,7 +80,7 @@ class EteTool():
                     label = '%s (%s)' % (taxon2new_taxon[lf.name], lf.name)
                 else:
                     label = 'n/a'
-            print ("add_face", add_face)
+            #print ("add_face", add_face)
             if add_face:
                 n = TextFace(label, fgcolor = "black", fsize = 12, fstyle = 'italic')
                 lf.add_face(n, 0)
