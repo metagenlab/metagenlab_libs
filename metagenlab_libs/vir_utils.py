@@ -10,37 +10,28 @@ from Bio.SeqUtils import GC
 
 import sqlite3
 
-CLUSTERING_TABLE = settings.CLUSTERING_TABLE 
-CLUSTERING2SPECIES_TABLE = settings.CLUSTERING2SPECIES_TABLE 
+
 
 def quote(v):
     return f"\"{v}\""
 
 class DB:
-    def __init__(self, conn, cursor):
+    def __init__(self, conn, cursor, clustering_table, clustering2species_table):
         self.server = cursor
         self.conn = conn
         self.db_path = settings.DB_PATH
+        self.CLUSTERING_TABLE = clustering_table
+        self.CLUSTERING2SPECIES_TABLE = clustering2species_table
 
-    def load_db():
+    def load_db(db_path, 
+                clustering_table=None, 
+                clustering2species_table=None):
 
-        db = settings.DB_PATH
-        print("connecting to ", db)
-        conn = sqlite3.connect(db)
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        return DB(conn, cursor)
-    
-    
-    def get_VF_conservation_matrix(taxon_id, identity_cutoff=90, coverage_cutoff=80):
-        
-        sql = '''
-        
-        
-        
-        '''
-    
-        # convert long table to matrix with pandas
+        return DB(conn, cursor, clustering_table, clustering2species_table)
+
         
     def create_term_table(self,):
         sql = 'create table if not exists terms (term_id INTEGER PRIMARY KEY, term_name varchar(200))'
@@ -68,14 +59,14 @@ class DB:
             select distinct t3.db_name,t1.uniparc_accession,t4.cluster_name,t5.description from uniparc_entry t1
             inner join VF_table t2 on t1.uniparc_id=t2.uniparc_id
             inner join VF_databases t3 on t2.db_id=t3.db_id
-            inner join {CLUSTERING_TABLE} t4 on t1.uniparc_id=t4.uniparc_id
+            inner join {self.CLUSTERING_TABLE} t4 on t1.uniparc_id=t4.uniparc_id
             inner join uniparc_consensus_annotation t5 on t1.uniparc_id=t5.uniparc_id 
             where t1.uniparc_id in ({uniparc_id_filter})
             '''
         else:
              sql = f'''
             select distinct t1.uniparc_accession,t2.cluster_name,t3.description from uniparc_entry t1
-            inner join {CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id
+            inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id
             inner join uniparc_consensus_annotation t3 on t1.uniparc_id=t3.uniparc_id
             where t1.uniparc_id in ({uniparc_id_filter})
             '''           
@@ -102,7 +93,7 @@ class DB:
                 inner join VF_table t2 on t1.VF_id=t2.VF_id 
                 inner join VF_databases t3 on t2.db_id=t3.db_id
                 inner join uniparc_entry t4 on t2.uniparc_id=t4.uniparc_id
-                inner join {CLUSTERING_TABLE} t5 on t2.uniparc_id=t5.uniparc_id
+                inner join {self.CLUSTERING_TABLE} t5 on t2.uniparc_id=t5.uniparc_id
                 inner join uniparc_consensus_annotation t6 on t2.uniparc_id=t6.uniparc_id
                 where t1.pmid=?;
         '''
@@ -130,15 +121,53 @@ class DB:
         return [i[0] for i in self.server.execute(sql,).fetchall()]
     
     
-    def get_db_VF_stats(self):
-               
+    def get_db_VF_stats(self, bacteria_only=False):
+        if bacteria_only:
+            taxnonomy_filter = 'where superkingdom_taxon_id=2'
+        else:
+            taxnonomy_filter = ''
         sql = 'select db_name, count(*) from ' \
             ' (select distinct t2.db_name, t1.db_id, t2.db_name,t1.VF_id from VF_table t1 ' \
             ' inner join VF_databases t2 on t1.db_id=t2.db_id ' \
-            ' inner join uniparc2species t3 on t1.uniparc_id=t3.uniparc_id where superkingdom_taxon_id=2) A' \
+            f' inner join uniparc2species t3 on t1.uniparc_id=t3.uniparc_id {taxnonomy_filter}) A' \
             ' group by A.db_id;'
         
         return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+    
+    def get_cluster_count(self, db_filter, bacteria_only=True):
+        '''
+        return df with list of clusters with number of VF from each database 
+                      db1     db2    db3
+        cluster 1     1       2      1
+        cluster 2     0       1      1
+        cluster 3     1       0      0
+        '''
+        if bacteria_only:
+            taxnonomy_filter = 'and superkingdom_taxon_id=2'
+        else:
+            taxnonomy_filter = ''
+
+        db_filter = '","'.join(db_filter)
+
+        sql = f'''
+        select db_name, cluster_name, count(*) as n from (
+        select distinct t3.db_name, t1.VF_id, t2.cluster_name from VF_table t1 
+        inner join uniparc2mmseqs_90_80 t2 on t1.uniparc_id = t2.uniparc_id 
+        inner join VF_databases t3 on t1.db_id =t3.db_id 
+        inner join uniparc2species t3 on t1.uniparc_id=t3.uniparc_id
+        where db_name in ("{db_filter}")  {taxnonomy_filter}) A group by A.db_name, A.cluster_name;
+        '''
+
+        df = pandas.read_sql(sql, self.conn)
+
+        df.columns = ["db_name", "cluster_name", "count"]
+
+        df_u = df.set_index(["db_name", "cluster_name"]).unstack(level=0, fill_value=0)
+        print(df_u.head())
+
+        return df_u
+
+
 
     def get_total_nr_VFs(self,):
         
@@ -159,14 +188,14 @@ class DB:
     def get_total_clusters(self,):
         
         sql = f'''select count(*) from (select distinct cluster_id from (select * from VF_table t1 
-              inner join {CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id) A ) AA; '''
+              inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id) A ) AA; '''
         
         return self.server.execute(sql,).fetchall()[0][0]
 
     def get_total_clusters_bacteria(self,):
         
         sql = f'''select count(*) from (select distinct cluster_id from (select * from VF_table t1
-             inner join {CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id
+             inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id
              inner join uniparc2species t3 on t1.uniparc_id=t3.uniparc_id where superkingdom_taxon_id=2) A ) AA;
            ''' 
         
@@ -184,7 +213,7 @@ class DB:
     def get_db_cluster_stats(self):
         
         sql = f'''select AA.db_name, count(*) from (select C.db_name,cluster_id from (
-                   select distinct t1.uniparc_id,cluster_id from {CLUSTERING_TABLE} t1
+                   select distinct t1.uniparc_id,cluster_id from {self.CLUSTERING_TABLE} t1
                    inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id where superkingdom_taxon_id=2) A
                    inner join VF_table B on A.uniparc_id=B.uniparc_id
                    inner join VF_databases C on B.db_id=C.db_id group by db_name,cluster_id) AA group by AA.db_name;
@@ -198,7 +227,7 @@ class DB:
         sql = f'''select {rank}_taxon_id, count(*) as n from (
           select distinct cluster_id, {rank}_taxon_id from VF_table t1
           inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id
-          inner join {CLUSTERING_TABLE} t3 on t1.uniparc_id=t3.uniparc_id 
+          inner join {self.CLUSTERING_TABLE} t3 on t1.uniparc_id=t3.uniparc_id 
           where species_name not like "%% sp.%%" 
           and species_name not like "%%uncultured%%"
           ) A
@@ -212,8 +241,8 @@ class DB:
         
         sql = f'''select db_name,{rank}_taxon_id, count(*) as n from (
           select distinct db_name,t3.cluster_id, t1.{rank}_taxon_id from uniparc2species t1 
-          inner join {CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id 
-          inner join {CLUSTERING_TABLE} t3 on t2.cluster_id=t3.cluster_id
+          inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id 
+          inner join {self.CLUSTERING_TABLE} t3 on t2.cluster_id=t3.cluster_id
           inner join VF_table t4 on t3.uniparc_id=t4.uniparc_id
           inner join VF_databases t5 on t4.db_id=t5.db_id
           where t1.species_name not like "%% sp.%%" 
@@ -238,7 +267,7 @@ class DB:
                 select distinct db_name,cluster_id,species_taxon_id from uniparc2species t1
                 inner join VF_table t2 on t1.uniparc_id=t2.uniparc_id
                 inner join VF_databases t3 on t2.db_id=t3.db_id
-                inner join {CLUSTERING_TABLE} t4 on t1.uniparc_id=t4.uniparc_id
+                inner join {self.CLUSTERING_TABLE} t4 on t1.uniparc_id=t4.uniparc_id
             ) AA
             left join 
                 (
@@ -288,8 +317,6 @@ class DB:
             for taxon_id in taxon_id_list:
                 taxid2n_genomes[taxon_id] = self.get_n_genomes(taxon_id)
         
-        print("taxid2n_genomes", taxid2n_genomes)
-        
         taxid_filter = ','.join(taxon_id_list)
 
         # get cluster frequency
@@ -329,18 +356,19 @@ class DB:
             n_genomes = taxid2n_genomes[taxid]
             s["freq"] = round((float(s["n"])/n_genomes) * 100, 2)
             return s
+        if percentages:
+            df_with_freq = df.apply(calculate, axis=1)
+            print("DF shape freq", df_with_freq.shape)
+            return df_with_freq
+        else:
+            return df
 
-        df_with_freq = df.apply(calculate, axis=1)
-        print("DF shape freq", df_with_freq.shape)
-        return df_with_freq
-
-
-  
+          
     def get_VF_cluster2frequency_within_species(self,
-                                             taxon_id, 
-                                             min_identity=90, 
-                                             min_coverage=60,
-                                             percentages=False):
+                                                taxon_id, 
+                                                min_identity=90, 
+                                                min_coverage=60,
+                                                percentages=False):
         '''
         Work with species and genus taxids
         '''
@@ -349,7 +377,7 @@ class DB:
         if percentages:
             n_genomes = self.get_n_genomes(taxon_id)
         # get cluster list
-        sql = f'''select distinct cluster_name from {CLUSTERING_TABLE} t1 
+        sql = f'''select distinct cluster_name from {self.CLUSTERING_TABLE} t1 
                inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id where species_taxon_id={taxon_id}
                '''
         cluster_list = [i[0] for i in self.server.execute(sql,).fetchall()]
@@ -382,6 +410,7 @@ class DB:
                 ) BB
             on AA.cluster_name=BB.cluster_name;
         '''
+        print(sql)
         if not percentages:
             hsh = {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
             for i in cluster_list:
@@ -594,18 +623,23 @@ class DB:
             ) B group by B.assembly_id,B.accession) C
             on A.assembly_id=C.assembly_id
             ;'''
-        #print(sql)
+        print(sql)
         return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
     
 
     def get_db_cluster_accession_list(self,
-                                      db_name):
+                                      db_name,
+                                      bacteria_only=True):
+        if bacteria_only:
+            taxnonomy_filter = "and t4.superkingdom_taxon_id=2"
+        else:
+            taxnonomy_filter = ""
         
-        sql = f'''select distinct cluster_name, cluster_id from {CLUSTERING_TABLE} t1
+        sql = f'''select distinct cluster_name, cluster_id from {self.CLUSTERING_TABLE} t1
                   inner join VF_table t2 on t1.uniparc_id=t2.uniparc_id
                   inner join VF_databases as t3 on t2.db_id=t3.db_id
                   inner join uniparc2species t4 on t1.uniparc_id=t4.uniparc_id
-                  where t3.db_name="{db_name}" and t4.superkingdom_taxon_id=2 
+                  where t3.db_name="{db_name}" {taxnonomy_filter}
               '''
         
         return [i[0] for i in self.server.execute(sql,).fetchall()]
@@ -677,6 +711,7 @@ class DB:
         return pandas.read_sql(sql, self.conn)
    
    
+    """
     def get_genome_accession2ani(self,
                                  taxon_id):
         
@@ -691,7 +726,7 @@ class DB:
           '''
         #print(sql)
         return pandas.read_sql(sql, self.conn)
-        
+    """
         
     def VF_cluster_genome_counts(self,
                                  taxon_id, 
@@ -712,8 +747,8 @@ class DB:
                     inner join homology_search_db_xrefs t3 on t1.substitution_matrix_id=t3.id 
                     inner join homology_search_db_xrefs t4 on t1.filtering_id=t4.id 
                     inner join genome_assembly_table t5 on t1.assembly_id=t5.assembly_id 
-                    inner join {CLUSTERING_TABLE} t6 on t1.uniparc_id=t6.uniparc_id 
-                    inner join {CLUSTERING2SPECIES_TABLE} t7 on t6.cluster_id=t7.cluster_id
+                    inner join {self.CLUSTERING_TABLE} t6 on t1.uniparc_id=t6.uniparc_id 
+                    inner join {self.CLUSTERING2SPECIES_TABLE} t7 on t6.cluster_id=t7.cluster_id
                     inner join genome_assembly_table2taxon_id t8 on t5.assembly_id=t8.assembly_id
                     where t8.taxon_id={taxon_id}
                     and t7.species_taxon_id={taxon_id}
@@ -746,8 +781,8 @@ class DB:
                     inner join homology_search_db_xrefs t3 on t1.substitution_matrix_id=t3.id 
                     inner join homology_search_db_xrefs t4 on t1.filtering_id=t4.id 
                     inner join genome_assembly_table t5 on t1.assembly_id=t5.assembly_id 
-                    inner join {CLUSTERING_TABLE} t6 on t1.uniparc_id=t6.uniparc_id 
-                    inner join {CLUSTERING2SPECIES_TABLE} t7 on t6.cluster_id=t7.cluster_id
+                    inner join {self.CLUSTERING_TABLE} t6 on t1.uniparc_id=t6.uniparc_id 
+                    inner join {self.CLUSTERING2SPECIES_TABLE} t7 on t6.cluster_id=t7.cluster_id
                     inner join genome_assembly_table2taxon_id t8 on t5.assembly_id=t8.assembly_id
                     inner join circos_genome2proteins t9 on t1.hit_accession=t9.accession
                     inner join circos_proteins2mmseqs t10 on t9.protein_id=t10.protein_id 
@@ -776,7 +811,7 @@ class DB:
                                 taxon_id,
                                 rank="species"):
         
-        sql = f'''select count(*) from (select distinct t1.uniparc_id from {CLUSTERING_TABLE} t1 
+        sql = f'''select count(*) from (select distinct t1.uniparc_id from {self.CLUSTERING_TABLE} t1 
         inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id where {rank}_taxon_id={taxon_id}) A;'''
         
         return self.server.execute(sql,).fetchall()[0][0]
@@ -788,7 +823,7 @@ class DB:
         sql2 = f'''
             select A.{rank}_name, count(*) as n_cluster from
             (select t1.{rank}_name,{rank}_taxon_id,t2.cluster_id from uniparc2species t1
-            inner join {CLUSTERING_TABLE} t2 on t1.uniparc_id =t2.uniparc_id 
+            inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id =t2.uniparc_id 
             where t1.{rank}_name not like "%%%% sp. %%%%" 
             and t1.{rank}_name not like "%%%%uncultured%%%%" 
             and t1.{rank}_name not like "%%%%genomosp%%%%" 
@@ -804,7 +839,7 @@ class DB:
         
         cluster_filter = '","'.join(cluster_name_list)
         
-        sql = f'select cluster_name,cluster_id from {CLUSTERING_TABLE} where cluster_name in ("{cluster_filter}")'
+        sql = f'select cluster_name,cluster_id from {self.CLUSTERING_TABLE} where cluster_name in ("{cluster_filter}")'
         
         return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
 
@@ -826,7 +861,7 @@ class DB:
         gene_filter = '","'.join(gene_list)
         sql_gene2cluster = f'select distinct cluster_name,gene from uniparc_consensus_annotation t1 ' \
                          f' inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id ' \
-                         f' inner join {CLUSTERING_TABLE} t3 on t1.uniparc_id=t3.uniparc_id ' \
+                         f' inner join {self.CLUSTERING_TABLE} t3 on t1.uniparc_id=t3.uniparc_id ' \
                          f' inner join VF_table t4 on t1.uniparc_id=t4.uniparc_id ' \
                          f'where {rank_name}_taxon_id={taxon_id} and gene in ("{gene_filter}");'
         
@@ -898,7 +933,7 @@ class DB:
                     t1.evalue, t1.bitscore,t6.description
                     from homology_search t1
                     inner join genome_assembly_table t2 on t1.assembly_id=t2.assembly_id
-                    inner join {CLUSTERING_TABLE} t4 on t1.uniparc_id=t4.uniparc_id
+                    inner join {self.CLUSTERING_TABLE} t4 on t1.uniparc_id=t4.uniparc_id
                     inner join uniparc_entry t5 on t1.uniparc_id=t5.uniparc_id
                     inner join uniparc_consensus_annotation t6 on t1.uniparc_id=t6.uniparc_id
                     inner join homology_search_db_xrefs t7 on t1.search_tool_id=t7.id
@@ -960,7 +995,7 @@ class DB:
                     t1.evalue, t1.bitscore,t6.description
                     from homology_search t1
                     inner join genome_assembly_table t2 on t1.assembly_id=t2.assembly_id
-                    inner join {CLUSTERING_TABLE} t4 on t1.uniparc_id=t4.uniparc_id
+                    inner join {self.CLUSTERING_TABLE} t4 on t1.uniparc_id=t4.uniparc_id
                     inner join uniparc_entry t5 on t1.uniparc_id=t5.uniparc_id
                     inner join uniparc_consensus_annotation t6 on t1.uniparc_id=t6.uniparc_id
                     inner join homology_search_db_xrefs t7 on t1.search_tool_id=t7.id
@@ -1030,9 +1065,9 @@ class DB:
             taxid2proportion_pan = {} 
             for taxid in taxid_list:
                 combined = (taxid2core_VF_median[taxid] + taxid2pan_VF_median[taxid])
-                print("taxid",taxid,"n combined", combined)
-                print("core", taxid2core_VF_median[taxid])
-                print("pan", taxid2pan_VF_median[taxid])
+                #print("taxid",taxid,"n combined", combined)
+                #print("core", taxid2core_VF_median[taxid])
+                #print("pan", taxid2pan_VF_median[taxid])
                 taxid2proportion_core[taxid] = round((taxid2core_VF_median[taxid] / combined) * 100, 2)
                 taxid2proportion_pan[taxid] = round((taxid2pan_VF_median[taxid] / combined) * 100, 2)
             return taxid2proportion_core, taxid2proportion_pan
@@ -1136,7 +1171,7 @@ fill_color         = lgreen
         VF_detail = self.get_assembly_VF_list(assembly_accession, 90, taxon_id)
         cluster_filter = '","'.join(VF_detail["cluster_name"].unique())
         sql = f'''select distinct cluster_name,gene from uniparc_consensus_annotation t1 
-        inner join {CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id where t2.cluster_name in ("{cluster_filter}")'''
+        inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id where t2.cluster_name in ("{cluster_filter}")'''
         #print(sql)
         cluster2gene = {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
         
@@ -1208,19 +1243,31 @@ fill_color         = lgreen
     
         return self.server.execute(sql,).fetchall()[0][0]
 
-    def get_genome_distance(self, taxon_id, distance='AAI_median'):
-        
+    def get_genome_distance(self, distance='AAI_median',taxon_id=False,  reference_assembly_accession=False):
+
+        if reference_assembly_accession:
+            ref = f'and t3.accession="{reference_assembly_accession}"'
+        else:
+            ref = ''
+                  
+        if taxon_id:
+            tax_filter = f'and t5.taxon_id={taxon_id} and t6.taxon_id={taxon_id}'
+        else:
+            tax_filter = ''
+
+
         sql = f'''
-            select t3.accession,t4.accession, distance from genome_assembly_distance t1 
+            select t5.taxon_id,t3.accession as genome_a,t4.accession as genome_b, distance from genome_assembly_distance t1 
             inner join terms t2 on t1.term_id=t2.term_id 
             inner join genome_assembly_table t3 on t1.assembly_b=t3.assembly_id 
             inner join genome_assembly_table t4 on t1.assembly_a=t4.assembly_id 
             inner join genome_assembly_table2taxon_id t5 on t3.assembly_id=t5.assembly_id
             inner join genome_assembly_table2taxon_id t6 on t4.assembly_id=t6.assembly_id
-            where t5.taxon_id={taxon_id}
-            and t6.taxon_id={taxon_id} 
-            and term_name="{distance}"
+            where term_name="{distance}"
+            {ref}
+            {tax_filter}
         '''
+        print(sql)
         return pandas.read_sql(sql, self.conn)
         
     def get_accession2genome_distance(self, assembly_id, distance="AAI"):
@@ -1248,7 +1295,7 @@ fill_color         = lgreen
         sql = f'''select * from (select gene,count(*) as n from
                  (select distinct cluster_name,gene from uniparc_consensus_annotation t1
                  inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id
-                 inner join {CLUSTERING_TABLE} t3 on t1.uniparc_id=t3.uniparc_id
+                 inner join {self.CLUSTERING_TABLE} t3 on t1.uniparc_id=t3.uniparc_id
                  inner join VF_table t4 on t1.uniparc_id=t4.uniparc_id
                  where {rank}_taxon_id={taxon_id}) A group by gene) B where n >1;
                ''' # and db_id!=2
@@ -1271,15 +1318,15 @@ fill_color         = lgreen
         print("NUMBER OF CLUSTERS:", len (cluster_id_list))
 
         sql = f'select cluster_name,uniparc_accession,description from uniparc_entry t1' \
-            f' inner join {CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id ' \
+            f' inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id ' \
             f' inner join uniparc_consensus_annotation t3 on t1.uniparc_id=t3.uniparc_id where t2.{column} in ({cluster_fam_filter});'
 
-        sql2 = f'select distinct cluster_name,phylum_name,species_name from {CLUSTERING_TABLE} t1 ' \
+        sql2 = f'select distinct cluster_name,phylum_name,species_name from {self.CLUSTERING_TABLE} t1 ' \
             f' inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id where t1.{column} in ({cluster_fam_filter}) and species_name not like "%% sp.%%";'
 
         sql3 = f'select cluster_name,count(*) as n_db from ' \
             f' (select distinct cluster_name,db_id from uniparc_entry t1 ' \
-            f' inner join {CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id ' \
+            f' inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id ' \
             f' inner join VF_table t3 on t1.uniparc_id=t3.uniparc_id where t2.{column} in ({cluster_fam_filter})) A group by cluster_name'
 
         self.server.execute(sql,)
