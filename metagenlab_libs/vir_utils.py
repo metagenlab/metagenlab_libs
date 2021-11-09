@@ -918,6 +918,32 @@ class DB:
         else:
             return cluster2count
 
+    def get_mcl_cluster_frequency(self, 
+                                 taxon_id,
+                                 percentage=False):
+        
+        sql = f'''
+        select cluster_id,count(*) as n from (select distinct t1.assembly_id,cluster_id from circos_genome2proteins t1 
+        inner join circos_proteins2mcl_clusters t2 on t1.protein_id=t2.protein_id 
+        inner join genome_assembly_table t3 on t1.assembly_id=t3.assembly_id
+        inner join genome_assembly_table2taxon_id t4 on t3.assembly_id=t4.assembly_id
+        where t4.taxon_id={taxon_id}
+        ) A group by A.cluster_id;
+        '''
+        
+        cluster2count = {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+ 
+        if percentage:
+            n_genomes = self.get_n_genomes(taxon_id)
+            cluster2count_percent = {}
+            for cluster, count in cluster2count.items():
+                cluster2count_percent[cluster] = (count/float(n_genomes))*100
+            return cluster2count_percent
+        else:
+            return cluster2count
+
+
+
     def get_VF_cluster_hits(self, 
                             cluster_id,
                             taxon_id,
@@ -1205,17 +1231,23 @@ fill_color         = lgreen
             
         return config.name
 
-    def get_genome_data(self, assembly_accession, taxon_id):
+    def get_genome_data(self, assembly_accession, taxon_id, clustering="mmseqs"):
+
+        if clustering == 'mmseqs':
+            clustering_table = 'circos_proteins2mmseqs'
+            add_filter = 'and t3.id_cutoff=80 and t3.cov_cutoff=80'
+        elif clustering == 'mcl':
+            clustering_table = 'circos_proteins2mcl_clusters'
+            add_filter = ''
         
         sql = f'''select record_id,t1.accession,start,end,strand,plasmid,t3.cluster_id from circos_genome2proteins t1 
         inner join genome_assembly_table t2 on t1.assembly_id=t2.assembly_id
-        inner join circos_proteins2mmseqs t3 on t1.protein_id=t3.protein_id
+        inner join {clustering_table} t3 on t1.protein_id=t3.protein_id
         inner join genome_assembly_table2taxon_id t4 on t2.assembly_id=t4.assembly_id
         where t2.accession="{assembly_accession}" 
         and t4.taxon_id={taxon_id}
         and t3.taxon_id={taxon_id}
-        and t3.id_cutoff=80
-        and t3.cov_cutoff=80
+        {add_filter}
         order by record_id,start;
         '''
         print(sql)
