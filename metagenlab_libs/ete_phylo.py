@@ -6,6 +6,8 @@ from matplotlib.colors import rgb2hex
 
 import math
 
+from metagenlab_libs import colors
+
 
 def layout(node):
     return
@@ -135,7 +137,7 @@ class Column:
 class SimpleColorColumn(Column):
     def __init__(self, values, header=None, use_col=True,
             face_params=None, header_params=None, col_func=None,
-            default_val=0):
+            default_val=0, color_gradient=False):
         super().__init__(header, face_params, header_params)
         self.values = values
         self.header = header
@@ -146,6 +148,10 @@ class SimpleColorColumn(Column):
         else:
             self.col = face_params["color"]
         self.col_func = col_func
+        self.color_gradient = color_gradient
+        if color_gradient:
+            cm, _ = colors.get_continuous_scale(values)
+            self.cm = cm
 
     def fromSeries(series, header=None, cls=None, **args):
         values = series.to_dict()
@@ -165,7 +171,15 @@ class SimpleColorColumn(Column):
 
         text_face = TextFace(str(val).center(8-len(str(val))), fstyle=italic)
         # to recode
-        if self.use_col and val != 0 and index in self.values:
+        if self.use_col and self.color_gradient:
+            rgba = self.cm.to_rgba(val, bytes=True)
+            text_face.inner_background.color = colors.to_rgb_str(rgba)
+            luminance = colors.get_luminance(rgba)
+            if luminance>=.5:
+                text_face.fgcolor = "#000000"
+            else:
+                text_face.fgcolor = "#ffffff"
+        elif self.use_col and val != 0 and index in self.values:
             if self.col_func is None:
                 text_face.inner_background.color = self.col
             else:
