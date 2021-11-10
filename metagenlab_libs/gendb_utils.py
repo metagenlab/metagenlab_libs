@@ -1582,7 +1582,7 @@ class DB:
 
         # make summary table
         summary_data, matrix = self.parwise_snps_comp(fasq_id_list, min_alt_freq)
-        cols = df_1.colums[0:-1]
+        cols = df_1.columns.to_list()[0:-1]
         return df_1[["position"]+cols], summary_data
 
 
