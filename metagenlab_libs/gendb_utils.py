@@ -1546,7 +1546,6 @@ class DB:
         df_1 = df_list[0].set_index("nucl_change")[['depth', 'alt_percent']]
 
         df_1.columns = [f"depth_{fasq_id_list[0]}", f"alt_percent_{fasq_id_list[0]}"]
-        
         for n,df in enumerate(df_list[1:]):
             df_2 = df.set_index("nucl_change")[['depth', 'alt_percent']]
             df_2.columns = [f"depth_{fasq_id_list[n+1]}", f"alt_percent_{fasq_id_list[n+1]}"]
@@ -1583,13 +1582,19 @@ class DB:
                 print(range_list)
                 lowcov_positions = [any(x in range(r[0], r[1]) for r in range_list) for x in position_list]
                 print("lowcov_positions",fastq_id, lowcov_positions)
-                combined_df.loc[lowcov_positions, col] = 'n/a'
+                combined_df.loc[lowcov_positions, col] = -2
 
         # 'depth_7321', 'alt_percent_7321', 'depth_7280', 'alt_percent_7280','diff', 'frequency'
 
         # make summary table
         summary_data, matrix = self.parwise_snps_comp(fasq_id_list, min_alt_freq)
         cols = combined_df.columns.to_list()[0:-1]
+        for col in combined_df.columns:
+            if 'depth' in col:
+                combined_df[col] = combined_df[col].fillna(-1).astype(int)
+            elif 'percent' in col:
+                combined_df[col] = combined_df[col].fillna(-1).astype(float)
+
         return combined_df[["position"]+cols], summary_data
 
 
