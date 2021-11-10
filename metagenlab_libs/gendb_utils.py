@@ -1539,6 +1539,7 @@ class DB:
             return detail_df, analyses
     
     def compare_snp_tables(self, fasq_id_list, min_alt_freq):
+        import re
 
         df_list = [self.fastq_snp_table(fastq_id, min_alt_freq) for fastq_id in fasq_id_list]
         
@@ -1553,23 +1554,51 @@ class DB:
             df_2 = df.set_index("nucl_change")[['depth', 'alt_percent']]
             df_2.columns = [f"depth_{fasq_id_list[n+1]}", f"alt_percent_{fasq_id_list[n+1]}"]
             df_1 = df_1.join(df_2, how='outer')
-        
-        print("combined", df_1.head())
 
         df_1["diff"] = 0
-        #print(df_1)
-        #print(df_1.isna().any(axis=1))
         df_1.loc[df_1.isna().any(axis=1), "diff"] = 1
-        #print(df_1[df_1.isna().any(axis=1)])
-    
+
+        # add snp frequency
         snp2frequency = self.snp_frequency(min_alt_freq=min_alt_freq)
-
-        summary_data, matrix = self.parwise_snps_comp(fasq_id_list, min_alt_freq)
-
         df_1["frequency"] = [snp2frequency[i] for i in df_1.index]
+        s = '[a-zA-Z]+([0-9]+)[a-zA-Z]+'
+        position_list = [int(re.search(s,nucl_change).group(1)) for nucl_change in df_1.index]
+        df_1["position"] = position_list
+        #df_1.reset_index().set_index(["position"])
+        print("position_list", position_list)
+        # flag lowcov snps
+        df_lowcov = self.get_lowcov_regions(fasq_id_list)
+        s = '.*_([0-9]+)$'
+        for col in df_1.columns:
+            if re.match(s,col):
+                fastq_id = re.search(s,col).group(1)
+                range_list = [(row.start, row.end+1) for n, row in df_lowcov.query(f'fastq_id == {fastq_id}').iterrows()]
+                print(range_list)
+                lowcov_positions = [any(x in range(r[0], r[1]) for r in range_list) for x in position_list]
+                print("lowcov_positions",fastq_id, lowcov_positions)
+                df_1.loc[lowcov_positions, col] = 'n/a'
 
-        return df_1, summary_data
+        # 'depth_7321', 'alt_percent_7321', 'depth_7280', 'alt_percent_7280','diff', 'frequency'
 
+        # make summary table
+        summary_data, matrix = self.parwise_snps_comp(fasq_id_list, min_alt_freq)
+        cols = df_1.colums[0:-1]
+        return df_1[["position"]+cols], summary_data
+
+
+    def get_lowcov_regions(self, fastq_id_list):
+        '''
+        problem of analysis id
+        results from multiple analyses will be combined
+        '''
+
+        fastq_filter = ','.join([str(i) for i in fastq_id_list])
+
+        sql = f'select fastq_id, start, end from GEN_lowcovregions where fastq_id in ({fastq_filter})'
+
+        df = pandas.read_sql(sql, self.conn)
+
+        return df
 
     def snp_info(self, snp_id):
 
