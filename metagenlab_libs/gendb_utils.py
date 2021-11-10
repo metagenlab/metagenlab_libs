@@ -1538,52 +1538,59 @@ class DB:
 
             return detail_df, analyses
     
-    def compare_snp_tables(self, fasq_id_list, min_alt_freq):
-        import re
 
-        df_list = [self.fastq_snp_table(fastq_id, min_alt_freq) for fastq_id in fasq_id_list]
+    def get_combined_snp_table(self, fasq_id_list, min_alt_freq=None, nucl_change_list=None):
+
+        df_list = [self.fastq_snp_table(fastq_id, min_alt_freq=min_alt_freq, nucl_change_list=nucl_change_list) for fastq_id in fasq_id_list]
         
         df_1 = df_list[0].set_index("nucl_change")[['depth', 'alt_percent']]
-        
-        print("df_1", df_1.head())
 
         df_1.columns = [f"depth_{fasq_id_list[0]}", f"alt_percent_{fasq_id_list[0]}"]
         
         for n,df in enumerate(df_list[1:]):
-            #print(n)
             df_2 = df.set_index("nucl_change")[['depth', 'alt_percent']]
             df_2.columns = [f"depth_{fasq_id_list[n+1]}", f"alt_percent_{fasq_id_list[n+1]}"]
             df_1 = df_1.join(df_2, how='outer')
 
-        df_1["diff"] = 0
-        df_1.loc[df_1.isna().any(axis=1), "diff"] = 1
+        return df_1
+
+    def compare_snp_tables(self, fasq_id_list, min_alt_freq):
+        import re
+
+        combined_df = self.get_combined_snp_table(fasq_id_list, min_alt_freq)
+
+        # eextract same mutations without min_alt_freq cutoff
+        combined_df = self.get_combined_snp_table(fasq_id_list, min_alt_freq=0, nucl_change_list=combined_df.index.to_list())
+
+        combined_df["diff"] = 0
+        combined_df.loc[combined_df.isna().any(axis=1), "diff"] = 1
 
         # add snp frequency
         snp2frequency = self.snp_frequency(min_alt_freq=min_alt_freq)
-        df_1["frequency"] = [snp2frequency[i] for i in df_1.index]
+        combined_df["frequency"] = [snp2frequency[i] for i in combined_df.index]
         s = '[a-zA-Z]+([0-9]+)[a-zA-Z]+'
-        position_list = [int(re.search(s,nucl_change).group(1)) for nucl_change in df_1.index]
-        df_1["position"] = position_list
-        #df_1.reset_index().set_index(["position"])
+        position_list = [int(re.search(s,nucl_change).group(1)) for nucl_change in combined_df.index]
+        combined_df["position"] = position_list
+        #combined_df.reset_index().set_index(["position"])
         print("position_list", position_list)
         # flag lowcov snps
         df_lowcov = self.get_lowcov_regions(fasq_id_list)
         s = '.*_([0-9]+)$'
-        for col in df_1.columns:
+        for col in combined_df.columns:
             if re.match(s,col):
                 fastq_id = re.search(s,col).group(1)
                 range_list = [(row.start, row.end+1) for n, row in df_lowcov.query(f'fastq_id == {fastq_id}').iterrows()]
                 print(range_list)
                 lowcov_positions = [any(x in range(r[0], r[1]) for r in range_list) for x in position_list]
                 print("lowcov_positions",fastq_id, lowcov_positions)
-                df_1.loc[lowcov_positions, col] = 'n/a'
+                combined_df.loc[lowcov_positions, col] = 'n/a'
 
         # 'depth_7321', 'alt_percent_7321', 'depth_7280', 'alt_percent_7280','diff', 'frequency'
 
         # make summary table
         summary_data, matrix = self.parwise_snps_comp(fasq_id_list, min_alt_freq)
-        cols = df_1.columns.to_list()[0:-1]
-        return df_1[["position"]+cols], summary_data
+        cols = combined_df.columns.to_list()[0:-1]
+        return combined_df[["position"]+cols], summary_data
 
 
     def get_lowcov_regions(self, fastq_id_list):
@@ -1963,16 +1970,27 @@ class DB:
     def fastq_snp_table(self, 
                         fastq_id, 
                         min_alt_freq=70,
-                        analysis_id_list=False):
+                        analysis_id_list=False,
+                        nucl_change_list=False):
         
         add_filter = ''
         if analysis_id_list:
             analysis_filter = ','.join([str(i) for i in analysis_id_list])
             add_filter += f' and analysis_id in ({analysis_filter})'
 
+        if nucl_change_list:
+            nucl_change_filter = '","'.join(nucl_change_list)
+            nucl_change_filter = f'and nucl_change in ("{nucl_change_filter}")'
+            
+        else:
+            nucl_change_filter = ''
+        print("nucl_change_filter", nucl_change_filter)
+        print("-----------------------------------------")
         sql = f'''select distinct id,fastq_id,reference,position,ref,alt,effect_id,gene,aa_position,aa_change,nucl_change,depth,ref_count,alt_count,alt_percent from GEN_snps 
                   where fastq_id={fastq_id} 
-                  and alt_percent>{min_alt_freq} {add_filter};'''
+                  and alt_percent>{min_alt_freq} {add_filter}
+                  {nucl_change_filter}
+                  ;'''
 
         return pandas.read_sql(sql, self.conn)
 
