@@ -1578,7 +1578,7 @@ class DB:
         for col in combined_df.columns:
             if re.match(s,col):
                 fastq_id = re.search(s,col).group(1)
-                range_list = [(row.start, row.end+1) for n, row in df_lowcov.query(f'fastq_id == {fastq_id}').iterrows()]
+                range_list = [(row.start+1, row.end+2) for n, row in df_lowcov.query(f'fastq_id == {fastq_id}').iterrows()]
                 print(range_list)
                 lowcov_positions = [any(x in range(r[0], r[1]) for r in range_list) for x in position_list]
                 print("lowcov_positions",fastq_id, lowcov_positions)
