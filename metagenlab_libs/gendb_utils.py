@@ -1541,20 +1541,31 @@ class DB:
 
     def get_combined_snp_table(self, fasq_id_list, min_alt_freq=None, nucl_change_list=None):
 
+        # retreieve metadata 
+        metadata_df = self.get_fastq_metadata_list(term_list=["sample_date", "registration_date"], fastq_filter=fasq_id_list)
+        metadata_df = metadata_df.pivot_table(index=["fastq_id"], columns="name",values="value", aggfunc=lambda x: ' '.join(x))
+        if "sample_date" in metadata_df.columns:
+            metadata_df["date"] = metadata_df["sample_date"].fillna(metadata_df["registration_date"])
+        elif "registration_date" in metadata_df.columns and not "sample_date" in metadata_df.columns:
+             metadata_df["date"] = metadata_df["registration_date"]
+        else:
+            metadata_df["date"] = None
+        fastq_id2date = metadata_df.to_dict()["date"]
+        print("fastq_id2date", fastq_id2date)
         df_list = [self.fastq_snp_table(fastq_id, min_alt_freq=min_alt_freq, nucl_change_list=nucl_change_list) for fastq_id in fasq_id_list]
         
         df_1 = df_list[0].set_index("nucl_change")[['depth', 'alt_percent']]
 
-        df_1.columns = [f"depth_{fasq_id_list[0]}", f"alt_percent_{fasq_id_list[0]}"]
+        df_1.columns = [f"depth_{fasq_id_list[0]} ({fastq_id2date[int(fasq_id_list[0])]})", f"perc_{fasq_id_list[0]} ({fastq_id2date[int(fasq_id_list[0])]})"]
         for n,df in enumerate(df_list[1:]):
             df_2 = df.set_index("nucl_change")[['depth', 'alt_percent']]
-            df_2.columns = [f"depth_{fasq_id_list[n+1]}", f"alt_percent_{fasq_id_list[n+1]}"]
+            df_2.columns = [f"depth_{fasq_id_list[n+1]} ({fastq_id2date[int(fasq_id_list[n+1])]})", f"perc_{fasq_id_list[n+1]} ({fastq_id2date[int(fasq_id_list[n+1])]})"]
             df_1 = df_1.join(df_2, how='outer')
 
         return df_1
 
     def compare_snp_tables(self, fasq_id_list, min_alt_freq):
-        import re
+        import re        
 
         combined_df = self.get_combined_snp_table(fasq_id_list, min_alt_freq)
 
@@ -1571,7 +1582,6 @@ class DB:
         position_list = [int(re.search(s,nucl_change).group(1)) for nucl_change in combined_df.index]
         combined_df["position"] = position_list
         #combined_df.reset_index().set_index(["position"])
-        print("position_list", position_list)
         # flag lowcov snps
         df_lowcov = self.get_lowcov_regions(fasq_id_list)
         s = '.*_([0-9]+)$'
@@ -1579,9 +1589,7 @@ class DB:
             if re.match(s,col):
                 fastq_id = re.search(s,col).group(1)
                 range_list = [(row.start+1, row.end+2) for n, row in df_lowcov.query(f'fastq_id == {fastq_id}').iterrows()]
-                print(range_list)
                 lowcov_positions = [any(x in range(r[0], r[1]) for r in range_list) for x in position_list]
-                print("lowcov_positions",fastq_id, lowcov_positions)
                 combined_df.loc[lowcov_positions, col] = -2
 
         # 'depth_7321', 'alt_percent_7321', 'depth_7280', 'alt_percent_7280','diff', 'frequency'
@@ -1589,10 +1597,10 @@ class DB:
         # make summary table
         summary_data, matrix = self.parwise_snps_comp(fasq_id_list, min_alt_freq)
         cols = combined_df.columns.to_list()[0:-1]
-        for col in combined_df.columns:
+        for n,col in enumerate(combined_df.columns):
             if 'depth' in col:
                 combined_df[col] = combined_df[col].fillna(-1).astype(int)
-            elif 'percent' in col:
+            elif 'perc' in col:
                 combined_df[col] = combined_df[col].fillna(-1).astype(float)
 
         return combined_df[["position"]+cols], summary_data
