@@ -1542,14 +1542,14 @@ class DB:
     def get_combined_snp_table(self, fasq_id_list, min_alt_freq=None, nucl_change_list=None):
 
         # retreieve metadata 
-        metadata_df = self.get_fastq_metadata_list(term_list=["sample_date", "registration_date"], fastq_filter=fasq_id_list)
+        metadata_df = self.get_fastq_metadata_list(term_list=["fastqc_n_pairs", "sample_date", "registration_date"], fastq_filter=fasq_id_list)
         metadata_df = metadata_df.pivot_table(index=["fastq_id"], columns="name",values="value", aggfunc=lambda x: ' '.join(x))
         if "sample_date" in metadata_df.columns:
-            metadata_df["date"] = metadata_df["sample_date"].fillna(metadata_df["registration_date"])
+            metadata_df["date"] = metadata_df["sample_date"].fillna(metadata_df["registration_date"]).fillna("n/a")
         elif "registration_date" in metadata_df.columns and not "sample_date" in metadata_df.columns:
-             metadata_df["date"] = metadata_df["registration_date"]
+             metadata_df["date"] = metadata_df["registration_date"].fillna("n/a")
         else:
-            metadata_df["date"] = None
+            metadata_df["date"] = "n/a"
         fastq_id2date = metadata_df.to_dict()["date"]
         print("fastq_id2date", fastq_id2date)
         df_list = [self.fastq_snp_table(fastq_id, min_alt_freq=min_alt_freq, nucl_change_list=nucl_change_list) for fastq_id in fasq_id_list]
