@@ -284,16 +284,12 @@ class DB:
             
         df_fastq = pandas.read_sql(sql_fastq, self.conn)
         df_samples = pandas.read_sql(sql_sample, self.conn).set_index("fastq_id")
-        print("HEAD", df_fastq.head())
         
         if fastq_intersection:
             intersection = set(df_fastq["fastq_id"].to_list()).intersection(set(df_samples.index.to_list()))
             df_samples = df_samples.loc[intersection,]
 
         df = pandas.concat([df_fastq, df_samples.reset_index()])
-        
-        print("HEAD-combined")
-        print(df["analysis_id"].to_list())
 
         if add_molis:
             print("add molis!")
