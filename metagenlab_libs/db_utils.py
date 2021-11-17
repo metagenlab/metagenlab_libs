@@ -1216,21 +1216,18 @@ class DB:
         df_stats = DB.to_pandas_frame(all_other_results, cols).set_index("taxon_id")
         return df_n_prot.join(df_n_contigs).join(df_stats)
 
-    def get_contigs_to_seqid (self, genome):
-        
 
+    def get_contigs_to_seqid (self, genome):
         query = (
-            "SELECT bioentry.name, bioentry.description, ids.seqfeature_id "
-			"FROM seqfeature as ids "
-			"JOIN bioentry ON bioentry.bioentry_id=ids.bioentry_id "
-            "WHERE bioentry.taxon_id=?"
+            "SELECT bioentry.name, ids.seqfeature_id "
+            "FROM seqfeature as ids "
+            "JOIN bioentry ON bioentry.bioentry_id=ids.bioentry_id "
+            "WHERE bioentry.taxon_id=?;"
         )
         contigs_seqids = self.server.adaptor.execute_and_fetchall(query, [genome])
-        df_contigs_seqid = DB.to_pandas_frame(contigs_seqids, ["contig", "description", "seqid"]).set_index("seqid")
-        
-        return df_contigs_seqid
+        df_contigs_seqid = DB.to_pandas_frame(contigs_seqids, ["contig", "seqid"])
+        return df_contigs_seqid.set_index("seqid")
 
-    
     
     def get_accession_to_entry(self):
         query = (
@@ -1481,7 +1478,6 @@ class DB:
     # from several queries if the index is the same.
     def get_gene_loc(self, seqids, as_hash=True):
         seqids_query = ",".join(["?"] * len(seqids))
-
         query = (
             "SELECT seqfeature_id, strand, start_pos, end_pos "
             f"FROM location WHERE seqfeature_id IN ({seqids_query});"
@@ -1489,7 +1485,7 @@ class DB:
 
         results = self.server.adaptor.execute_and_fetchall(query, seqids)
         if not as_hash:
-            return results
+            return DB.to_pandas_frame(results, ["seqid", "strand", "start", "end"])
 
         hsh_results = {}
         for line in results:
@@ -1499,7 +1495,7 @@ class DB:
             end = line[3]
             hsh_results[seqid] = [strand, start, end]
         return hsh_results
-    
+
 
     def get_CDS_type(self, ids):
         plchd = self.gen_placeholder_string(ids)
@@ -2303,6 +2299,7 @@ class DB:
     def load_db_from_name(db_name, db_type = "sqlite"):
         params = {"chlamdb.db_type" : db_type, "chlamdb.db_name" : db_name}
         return DB.load_db(db_name, params)
+
 
     def location2sequence(self, accession, start, end):
         sql = (
