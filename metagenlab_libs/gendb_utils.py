@@ -1774,15 +1774,12 @@ class DB:
         
         from GEN.models import Analysis
         
-        sql = '''select run_date,run_name,read_length,filearc_folder,qc_id,qc_path,count(*) as n_fastq from GEN_runs t1
+        sql = '''select t1.id as run_id,run_date,run_name,read_length,filearc_folder,qc_id,qc_path,count(*) as n_fastq from GEN_runs t1
         inner join GEN_fastqfiles t2 on t1.id=t2.run_id group by run_date,run_name,read_length,filearc_folder,qc_id,qc_path
         ''' 
         self.cursor.execute(sql,) 
-        data = [list(i) for i in self.cursor.fetchall()]
-        for n, row in enumerate(data):
-            if row[4]:
-                data[n][4] = Analysis.objects.filter(id=row[4])[0]
-        return data
+        df = pandas.read_sql(sql, self.conn)
+        return df
 
     def get_run_samples(self, run_name):
         
