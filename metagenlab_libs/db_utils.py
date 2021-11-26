@@ -1174,7 +1174,6 @@ class DB:
         )
         descr = self.server.adaptor.execute_and_fetchall(query)
         columns = ["taxon_id", "description", "has_plasmid"]
-
         return DB.to_pandas_frame(descr, columns).set_index(["taxon_id"])
 
 
@@ -1566,6 +1565,13 @@ class DB:
         elif search_on=="seqid":
             sel = ""
             where = f"v.seqfeature_id IN ({entries})"
+        elif search_on=="locus_tag":
+            sel = (
+                "INNER JOIN seqfeature_qualifier_value AS locus_tag ON locus_tag.seqfeature_id=v.seqfeature_id "
+                "INNER JOIN term as locus_tag_term ON locus_tag.term_id=locus_tag_term.term_id "
+                " AND locus_tag_term.name=\"locus_tag\" "
+            )
+            where = f" locus_tag.value IN ({entries}) "
         else:
             raise RuntimeError("Searching is only possible on seqid and taxid")
 
@@ -1583,6 +1589,8 @@ class DB:
 
         if as_df:
             df = DB.to_pandas_frame(results, ["seqid", "name", "value"])
+            if df.empty:
+                return df
             df = df.set_index(["seqid", "name"]).unstack(level="name")
             df.columns = [col for col in df.value.columns.values]
             return df
@@ -1598,12 +1606,18 @@ class DB:
         return hsh_results
 
 
-    def get_organism(self, ids, as_hash=True, id_type="seqid"):
+    def get_organism(self, ids, as_df=False, id_type="seqid", as_taxid=False):
         seqids_query = ",".join(["?"] * len(ids))
+
+        val = ""
+        if as_taxid:
+            val = "entry.taxon_id"
+        else:
+            val = "organism.value"
 
         if id_type == "seqid":
             query = (
-                "SELECT feature.seqfeature_id, organism.value "
+                f"SELECT feature.seqfeature_id, {val} "
                 "FROM seqfeature AS feature "
                 "INNER JOIN bioentry AS entry ON feature.bioentry_id = entry.bioentry_id "
                 "INNER JOIN bioentry_qualifier_value AS organism "
@@ -1614,7 +1628,7 @@ class DB:
             )
         elif id_type == "bioentry":
             query = (
-                "SELECT organism.bioentry_id, organism.value "
+                f"SELECT organism.bioentry_id, {val} "
                 "FROM bioentry_qualifier_value AS organism "
                 "INNER JOIN term AS organism_term ON organism.term_id = organism_term.term_id "
                 " AND organism_term.name = \"organism\" "
@@ -1624,8 +1638,10 @@ class DB:
             raise RuntimeError("Id_type should be either seqid or bioentry")
 
         results = self.server.adaptor.execute_and_fetchall(query, ids)
-        if not as_hash:
-            return results 
+        if as_df:
+            col_name = "taxid" if as_taxid else "organism"
+            df = DB.to_pandas_frame(results, columns=["seqid", "taxid"])
+            return df.set_index("seqid")
 
         hsh_results = {}
         for line in results:
@@ -1660,18 +1676,31 @@ class DB:
         return DB.to_pandas_frame(results, ["bioentry", "taxon", "ref_genome_bioentry"])
 
 
-    def get_og_identity(self, og, ref_seqid):
-        """
-        For now need to have both an og and a ref_seqid.
-        """
+    def get_og_identity(self, og=None, ref_seqid=None):
+        if og is None and ref_seqid is None:
+            raise RuntimeError("Need at least og or ref_seqid specified")
 
+        values = []
+        conjonctions = []
+        og_query = ""
+        if not og is None:
+            values.append(og)
+            conjonctions.append("orthogroup = ?")
+
+        if not ref_seqid is None:
+            conjonctions.append("(id_1 = ? OR id_2 = ?)")
+            values.append(ref_seqid)
+            values.append(ref_seqid)
+
+        where = " AND ".join(conjonctions)
         query = (
             "SELECT id_1, id_2, identity "
             "FROM orthology_identity "
-            "WHERE orthogroup = ? AND (id_1 = ? OR id_2 = ?);"
+            f"WHERE {where};"
         )
-        results = self.server.adaptor.execute_and_fetchall(query, (og, ref_seqid, ref_seqid))
+        results = self.server.adaptor.execute_and_fetchall(query, values)
         filtered_values = []
+
         for id_1, id_2, identity in results:
             if id_1==ref_seqid:
                 filtered_values.append((id_2, identity))
