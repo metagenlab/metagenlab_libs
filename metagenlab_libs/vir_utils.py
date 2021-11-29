@@ -17,7 +17,7 @@ def quote(v):
 
 class DB:
     def __init__(self, conn, cursor, clustering_table, clustering2species_table):
-        self.server = cursor
+        self.cursor = cursor
         self.conn = conn
         self.db_path = settings.DB_PATH
         self.CLUSTERING_TABLE = clustering_table
@@ -35,18 +35,18 @@ class DB:
         
     def create_term_table(self,):
         sql = 'create table if not exists terms (term_id INTEGER PRIMARY KEY, term_name varchar(200))'
-        self.server.execute(sql,)
+        self.cursor.execute(sql,)
 
 
     def add_term(self,term_name):
         sql = f'select term_id from terms where term_name="{term_name}"'
         try:
-            term_id = self.server.execute(sql,).fetchall()[0][0]
+            term_id = self.cursor.execute(sql,).fetchall()[0][0]
         except IndexError:
             sql = f'insert into terms (term_name) values ("{term_name}")'
-            self.server.execute(sql,)
+            self.cursor.execute(sql,)
             self.conn.commit()
-            term_id = self.server.lastrowid
+            term_id = self.cursor.lastrowid
         return term_id
 
     def get_uniparc_entry_annotation(self, uniparc_id_list, add_source_db=True):
@@ -71,7 +71,7 @@ class DB:
             where t1.uniparc_id in ({uniparc_id_filter})
             '''           
 
-        return self.server.execute(sql,).fetchall()
+        return self.cursor.execute(sql,).fetchall()
     
     def get_pmid_data(self,
                       pmid_list):
@@ -83,7 +83,7 @@ class DB:
                 select pmid,title,authors pmid2data where pmid in (?);
         '''
     
-        return self.server.execute(sql,[pmid_filter]).fetchall()
+        return self.cursor.execute(sql,[pmid_filter]).fetchall()
     
     def get_VF_list_from_pmid(self, 
                               pmid):
@@ -98,7 +98,7 @@ class DB:
                 where t1.pmid=?;
         '''
         
-        return list(self.server.execute(sql,[pmid]).fetchall())
+        return list(self.cursor.execute(sql,[pmid]).fetchall())
     
     
     def get_pmid_info(self, 
@@ -111,14 +111,14 @@ class DB:
                 where pmid in ({pmid_filter});
         '''
         
-        return list(self.server.execute(sql,pmid_list).fetchall())
+        return list(self.cursor.execute(sql,pmid_list).fetchall())
     
     
     def get_species_taxids_with_comparative_data(self,):
         
         sql = 'select taxon_id from species_phylogeny'
         
-        return [i[0] for i in self.server.execute(sql,).fetchall()]
+        return [i[0] for i in self.cursor.execute(sql,).fetchall()]
     
     
     def get_db_VF_stats(self, bacteria_only=False):
@@ -132,7 +132,7 @@ class DB:
             f' inner join uniparc2species t3 on t1.uniparc_id=t3.uniparc_id {taxnonomy_filter}) A' \
             ' group by A.db_id;'
         
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
     
     def get_cluster_count(self, db_filter, bacteria_only=True):
         '''
@@ -174,7 +174,7 @@ class DB:
         sql = 'select count(*) from (select distinct t1.uniparc_id from VF_table t1 ' \
         ' inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id) A;'
         
-        return self.server.execute(sql,).fetchall()[0][0]
+        return self.cursor.execute(sql,).fetchall()[0][0]
         
     def get_total_nr_VFs_bacteria(self,):
         
@@ -182,7 +182,7 @@ class DB:
                inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id 
                where superkingdom_taxon_id=2) A  ) AA;'''
         
-        return self.server.execute(sql,).fetchall()[0][0]
+        return self.cursor.execute(sql,).fetchall()[0][0]
 
 
     def get_total_clusters(self,):
@@ -190,7 +190,7 @@ class DB:
         sql = f'''select count(*) from (select distinct cluster_id from (select * from VF_table t1 
               inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id) A ) AA; '''
         
-        return self.server.execute(sql,).fetchall()[0][0]
+        return self.cursor.execute(sql,).fetchall()[0][0]
 
     def get_total_clusters_bacteria(self,):
         
@@ -199,7 +199,7 @@ class DB:
              inner join uniparc2species t3 on t1.uniparc_id=t3.uniparc_id where superkingdom_taxon_id=2) A ) AA;
            ''' 
         
-        return self.server.execute(sql,).fetchall()[0][0]
+        return self.cursor.execute(sql,).fetchall()[0][0]
 
     def get_db_UP_stats(self):
                
@@ -208,7 +208,7 @@ class DB:
               ' inner join uniparc2species t3 on t1.uniparc_id=t3.uniparc_id where superkingdom_taxon_id=2' \
               ' group by t2.db_name,t1.uniparc_id)A group by db_name;'
         
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
  
     def get_db_cluster_stats(self):
         
@@ -219,7 +219,7 @@ class DB:
                    inner join VF_databases C on B.db_id=C.db_id group by db_name,cluster_id) AA group by AA.db_name;
                    ''' 
         
-        return {i[0]:int(i[1]) for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:int(i[1]) for i in self.cursor.execute(sql,).fetchall()}
  
         
     def get_taxon_id2n_VF_clusters(self, rank='species'):
@@ -234,7 +234,7 @@ class DB:
           group by A.{rank}_taxon_id order by n DESC;
           '''
         
-        return {str(i[0]):i[1] for i in self.server.execute(sql,).fetchall()}
+        return {str(i[0]):i[1] for i in self.cursor.execute(sql,).fetchall()}
 
 
     def get_taxon_id2n_VF_clusters_separate_dbs(self, rank='species'):
@@ -252,7 +252,7 @@ class DB:
           '''
         
         db2taxid2cout = {}
-        for row in  self.server.execute(sql,).fetchall():
+        for row in  self.cursor.execute(sql,).fetchall():
             db_name, taxon_id, count = row
             if db_name not in db2taxid2cout:
                 db2taxid2cout[db_name] = {}
@@ -291,7 +291,7 @@ class DB:
           '''
         print(sql)
         db2taxid2cout = {}
-        for row in  self.server.execute(sql,).fetchall():
+        for row in  self.cursor.execute(sql,).fetchall():
             db_name, taxon_id, cluster_id, count = row
             if db_name not in db2taxid2cout:
                 db2taxid2cout[db_name] = {}
@@ -312,6 +312,12 @@ class DB:
         '''
         taxon_id_list = [str(i) for i in taxon_id_list]
         
+        sql = 'select distinct taxon_id from genome_assembly_table2taxon_id'
+        self.cursor.execute(sql,)
+        taxon_id_in_db = [str(i[0]) for i in self.cursor.fetchall()]
+        print("taxon_id_in_db", taxon_id_in_db)
+        taxon_id_list = [i for i in taxon_id_list if i in taxon_id_in_db]
+
         if percentages:
             taxid2n_genomes = {}
             for taxon_id in taxon_id_list:
@@ -354,6 +360,7 @@ class DB:
         def calculate(s):
             taxid = str(s["species_taxon_id"])
             n_genomes = taxid2n_genomes[taxid]
+            print("taxid, n genomes", taxid, n_genomes)
             s["freq"] = round((float(s["n"])/n_genomes) * 100, 2)
             return s
         if percentages:
@@ -380,7 +387,7 @@ class DB:
         sql = f'''select distinct cluster_name from {self.CLUSTERING_TABLE} t1 
                inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id where species_taxon_id={taxon_id}
                '''
-        cluster_list = [i[0] for i in self.server.execute(sql,).fetchall()]
+        cluster_list = [i[0] for i in self.cursor.execute(sql,).fetchall()]
 
         # get cluster frequency
         # start from spacies table to count 
@@ -412,12 +419,12 @@ class DB:
         '''
         print(sql)
         if not percentages:
-            hsh = {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+            hsh = {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
             for i in cluster_list:
                 if i not in hsh:
                     hsh[i] = 0
         else:
-            hsh = {i[0]:(float(i[1])/n_genomes)*100 for i in self.server.execute(sql,).fetchall()}
+            hsh = {i[0]:(float(i[1])/n_genomes)*100 for i in self.cursor.execute(sql,).fetchall()}
             for i in cluster_list:
                 if i not in hsh:
                     hsh[i] = 0
@@ -429,25 +436,25 @@ class DB:
             inner join genome_assembly_table2taxon_id t2 on t1.assembly_id=t2.assembly_id
             group by taxon_id
             '''
-            return {str(i[0]):i[1] for i in self.server.execute(sql,).fetchall()} 
+            return {str(i[0]):i[1] for i in self.cursor.execute(sql,).fetchall()} 
         else:
             sql = f'''select count(*) from genome_assembly_table t1
             inner join genome_assembly_table2taxon_id t2 on t1.assembly_id=t2.assembly_id
             where taxon_id={taxon_id}'''
-            n_genomes = int(self.server.execute(sql,).fetchall()[0][0])
+            n_genomes = int(self.cursor.execute(sql,).fetchall()[0][0])
             return n_genomes
     
     def get_assembly_id(self, assembly_accession):
         sql = f'''select assembly_id from genome_assembly_table
         where accession="{assembly_accession}"'''
         print(sql)
-        return self.server.execute(sql,).fetchall()[0][0]
+        return self.cursor.execute(sql,).fetchall()[0][0]
  
     def get_assembly_accession2assembly_id(self, taxon_id):
         sql = f'''select accession,t1.assembly_id from genome_assembly_table t1
         inner join genome_assembly_table2taxon_id t2 on t1.assembly_id=t2.assembly_id
         where taxon_id={taxon_id}'''
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
     
     def get_VF_cluster2frequency_within_species_separated_dbs(self,
                                                             taxon_id, 
@@ -492,7 +499,7 @@ class DB:
         '''
         
         db2counts = {}
-        for row in self.server.execute(sql,).fetchall():
+        for row in self.cursor.execute(sql,).fetchall():
             db = row[0]
             if percentages:
                 val = (int(row[2])/n_genomes)*100
@@ -514,7 +521,7 @@ class DB:
         and t2.taxon_id={taxon_id} group by t1.assembly_id;
         '''
         
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
 
     def get_genome_accession2description(self,
                                          taxon_id):
@@ -525,7 +532,7 @@ class DB:
         where taxon_id={taxon_id}
         '''
         
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
     
     def get_genome_accession2n_frameshifts(self,
                                            taxon_id,
@@ -541,7 +548,7 @@ class DB:
         group by accession order by n DESC;
         '''
         
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
            
         
     def get_genome_accession2statistics(self,
@@ -551,7 +558,7 @@ class DB:
         inner join genome_assembly_table2taxon_id t2 on t1.assembly_id=t2.assembly_id
         where taxon_id={taxon_id};
         '''
-        genome_data = self.server.execute(sql,).fetchall()
+        genome_data = self.cursor.execute(sql,).fetchall()
         accession2gc = {i[0]:i[1] for i in genome_data}
         accession2genome_size = {i[0]:i[2] for i in genome_data}
         accession2pseudo = {i[0]:i[3] for i in genome_data}
@@ -568,7 +575,7 @@ class DB:
              where taxon_id={taxon_id};
           '''
         
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
     
     def get_genome_accession2ani(self,
                                  taxon_id,
@@ -585,7 +592,7 @@ class DB:
         and t5.taxon_id={taxon_id};
           '''
         #print(sql)
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
 
 
     def get_genome_n_VF_clusters(self,
@@ -624,7 +631,7 @@ class DB:
             on A.assembly_id=C.assembly_id
             ;'''
         print(sql)
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
     
 
     def get_db_cluster_accession_list(self,
@@ -642,7 +649,7 @@ class DB:
                   where t3.db_name="{db_name}" {taxnonomy_filter}
               '''
         
-        return [i[0] for i in self.server.execute(sql,).fetchall()]
+        return [i[0] for i in self.cursor.execute(sql,).fetchall()]
 
 
 
@@ -662,7 +669,7 @@ class DB:
         where D.db_name = "{db_name}"
         '''
         
-        return [i[0] for i in self.server.execute(sql,).fetchall()]
+        return [i[0] for i in self.cursor.execute(sql,).fetchall()]
 
 
     def get_db_cluster_id_list(self,
@@ -681,7 +688,7 @@ class DB:
         where D.db_name = "{db_name}"
         '''
         
-        return [i[0] for i in self.server.execute(sql,).fetchall()]
+        return [i[0] for i in self.cursor.execute(sql,).fetchall()]
    
    
     def get_VF_mmseqs_clusters(self, taxon_id):
@@ -759,7 +766,7 @@ class DB:
                     and t4.name="no_filtering_lowcomplexity"
                     group by t1.assembly_id,t6.cluster_id;'''
         
-        return self.server.execute(sql_VF_freq,).fetchall()
+        return self.cursor.execute(sql_VF_freq,).fetchall()
         
 
     def VF_cluster_genome_2mmseqs(self,
@@ -797,7 +804,7 @@ class DB:
         
         print(sql)
         
-        return self.server.execute(sql_VF_freq,).fetchall()
+        return self.cursor.execute(sql_VF_freq,).fetchall()
         
 
 
@@ -805,7 +812,7 @@ class DB:
         
         sql = f'select species from ncbi_taxonomy where tax_id={taxon_id};'
         
-        return self.server.execute(sql,).fetchall()[0][0]
+        return self.cursor.execute(sql,).fetchall()[0][0]
 
     def get_species_VF_UP_count(self,
                                 taxon_id,
@@ -814,7 +821,7 @@ class DB:
         sql = f'''select count(*) from (select distinct t1.uniparc_id from {self.CLUSTERING_TABLE} t1 
         inner join uniparc2species t2 on t1.uniparc_id=t2.uniparc_id where {rank}_taxon_id={taxon_id}) A;'''
         
-        return self.server.execute(sql,).fetchall()[0][0]
+        return self.cursor.execute(sql,).fetchall()[0][0]
        
         
     def get_combined_dbs_cluster_count(self, rank):
@@ -831,7 +838,7 @@ class DB:
             group by t1.{rank}_name, t2.cluster_id) A group by A.{rank}_name,A.{rank}_taxon_id;
             '''
 
-        rank2count_all = {i[0]:i[1] for i in self.server.execute(sql2,).fetchall()}
+        rank2count_all = {i[0]:i[1] for i in self.cursor.execute(sql2,).fetchall()}
         
         return rank2count_all
 
@@ -841,7 +848,7 @@ class DB:
         
         sql = f'select cluster_name,cluster_id from {self.CLUSTERING_TABLE} where cluster_name in ("{cluster_filter}")'
         
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
 
     def get_uniparc_id(self, uniparc_accession_list):
         
@@ -849,7 +856,7 @@ class DB:
         
         sql = f'select uniparc_accession,uniparc_id from uniparc_entry where uniparc_accession in ("{up_filter}")'
         
-        return {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
 
     
     def get_clusters_from_gene_names(self,
@@ -865,13 +872,13 @@ class DB:
                          f' inner join VF_table t4 on t1.uniparc_id=t4.uniparc_id ' \
                          f'where {rank_name}_taxon_id={taxon_id} and gene in ("{gene_filter}");'
         
-        return self.server.execute(sql_gene2cluster,).fetchall()
+        return self.cursor.execute(sql_gene2cluster,).fetchall()
 
 
     def get_db_2pmid_list(self,):
         
         sql = 'select distinct db_name,pmid from VF_id2pmid t1 inner join VF_table t2 on t1.VF_id=t2.VF_id inner join VF_databases t3 on t2.db_id=t3.db_id;'
-        data = self.server.execute(sql,).fetchall()
+        data = self.cursor.execute(sql,).fetchall()
         db2pmid_list = {}
         for row in data:
             if row[0] not in db2pmid_list:
@@ -885,7 +892,7 @@ class DB:
         sql = 'select t1.pmid,title from VF_id2pmid t1 inner join pmid2data t2 on t1.pmid=t2.pmid group by t1.pmid,title;'
         
         pmi2descr = {}
-        for row in self.server.execute(sql,).fetchall():
+        for row in self.cursor.execute(sql,).fetchall():
             title_format = row[1].replace("'","").replace('"',"")
             pmi2descr[str(row[0])] = f"<td>{title_format}</td>"
 
@@ -907,7 +914,7 @@ class DB:
         ) A group by A.cluster_id;
         '''
         
-        cluster2count = {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        cluster2count = {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
  
         if percentage:
             n_genomes = self.get_n_genomes(taxon_id)
@@ -931,7 +938,7 @@ class DB:
         ) A group by A.cluster_id;
         '''
         
-        cluster2count = {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        cluster2count = {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
  
         if percentage:
             n_genomes = self.get_n_genomes(taxon_id)
@@ -1199,7 +1206,7 @@ fill_color         = lgreen
         sql = f'''select distinct cluster_name,gene from uniparc_consensus_annotation t1 
         inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id where t2.cluster_name in ("{cluster_filter}")'''
         #print(sql)
-        cluster2gene = {i[0]:i[1] for i in self.server.execute(sql,).fetchall()}
+        cluster2gene = {i[0]:i[1] for i in self.cursor.execute(sql,).fetchall()}
         
         VF_nr_list = VF_detail["hit_accession"].unique()
         
@@ -1267,13 +1274,13 @@ fill_color         = lgreen
     
         sql = f'select distinct {rank}_name from uniparc2species where {rank}_taxon_id={taxon_id}'
     
-        return self.server.execute(sql,).fetchall()[0][0]
+        return self.cursor.execute(sql,).fetchall()[0][0]
 
     def get_species_phylogeny(self, taxon_id):
     
         sql = f'select phylogeny from species_phylogeny where taxon_id={taxon_id}'
     
-        return self.server.execute(sql,).fetchall()[0][0]
+        return self.cursor.execute(sql,).fetchall()[0][0]
 
     def get_genome_distance(self, distance='AAI_median',taxon_id=False,  reference_assembly_accession=False):
 
@@ -1316,7 +1323,7 @@ fill_color         = lgreen
                  ;
              '''
         
-        return {i[0]:round(i[1],1) for i in self.server.execute(sql,).fetchall()}
+        return {i[0]:round(i[1],1) for i in self.cursor.execute(sql,).fetchall()}
         
 
     def get_ducplicate_gene_names(self,
@@ -1332,7 +1339,7 @@ fill_color         = lgreen
                  where {rank}_taxon_id={taxon_id}) A group by gene) B where n >1;
                ''' # and db_id!=2
 
-        return self.server.execute(sql,).fetchall()
+        return self.cursor.execute(sql,).fetchall()
         
 
     def cluster2annotation(self, 
@@ -1361,12 +1368,12 @@ fill_color         = lgreen
             f' inner join {self.CLUSTERING_TABLE} t2 on t1.uniparc_id=t2.uniparc_id ' \
             f' inner join VF_table t3 on t1.uniparc_id=t3.uniparc_id where t2.{column} in ({cluster_fam_filter})) A group by cluster_name'
 
-        self.server.execute(sql,)
-        annotation = self.server.fetchall()
-        self.server.execute(sql2,)
-        species = self.server.fetchall()
-        self.server.execute(sql3,)
-        cluster_name2n_db = {i[0]:i[1] for i in self.server.fetchall()}
+        self.cursor.execute(sql,)
+        annotation = self.cursor.fetchall()
+        self.cursor.execute(sql2,)
+        species = self.cursor.fetchall()
+        self.cursor.execute(sql3,)
+        cluster_name2n_db = {i[0]:i[1] for i in self.cursor.fetchall()}
 
         cluster2annotations = {}
         cluster2species = {}
