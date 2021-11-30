@@ -223,13 +223,13 @@ class DB:
         TODO will curently combine dta from multiple anlayses => should retun analysis_id as well
         '''
 
-        print("add molis:", add_molis)
+        #print("add molis:", add_molis)
 
         res_filter_fastq = ''
         res_filter_sample = ''
         workflow_filter = ''
         if term_list:
-            print("term_list", term_list)
+            #print("term_list", term_list)
             term_filter = '","'.join(term_list)
             res_filter_fastq += f' and t2.name in ("{term_filter}")\n' 
             res_filter_sample += f' and t2.name in ("{term_filter}")\n' 
@@ -1547,7 +1547,7 @@ class DB:
         else:
             metadata_df["date"] = "n/a"
         fastq_id2date = metadata_df.to_dict()["date"]
-        print("fastq_id2date", fastq_id2date)
+
         df_list = [self.fastq_snp_table(fastq_id, min_alt_freq=min_alt_freq, nucl_change_list=nucl_change_list) for fastq_id in fasq_id_list]
         
         df_1 = df_list[0].set_index("nucl_change")[['depth', 'alt_percent']]
@@ -1645,7 +1645,7 @@ class DB:
         res = []
         complete_mat = []
         for one_pair in comb:
-            print("one_pair", one_pair)
+            #print("one_pair", one_pair)
             vals = self.compare_samples(one_pair[0], one_pair[1], alt_freq_cutoff=alt_freq_cutoff)
             res.append(vals)
             complete_mat.append(vals)
@@ -1990,8 +1990,8 @@ class DB:
             
         else:
             nucl_change_filter = ''
-        print("nucl_change_filter", nucl_change_filter)
-        print("-----------------------------------------")
+        #print("nucl_change_filter", nucl_change_filter)
+        #print("-----------------------------------------")
         sql = f'''select distinct id,fastq_id,reference,position,ref,alt,effect_id,gene,aa_position,aa_change,nucl_change,depth,ref_count,alt_count,alt_percent from GEN_snps 
                   where fastq_id={fastq_id} 
                   and alt_percent>{min_alt_freq} {add_filter}
