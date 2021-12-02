@@ -1676,14 +1676,18 @@ class DB:
         return DB.to_pandas_frame(results, ["bioentry", "taxon", "ref_genome_bioentry"])
 
 
-    def get_og_identity(self, og=None, ref_seqid=None):
-        if og is None and ref_seqid is None:
+    def get_og_identity(self, og=None, ref_seqid=None, pairs=None):
+        """
+         Hackish... should be refactored at some point
+        """
+        if og is None and ref_seqid is None and pairs is None:
             raise RuntimeError("Need at least og or ref_seqid specified")
 
         values = []
         conjonctions = []
         og_query = ""
-        if not og is None:
+        conj_op = " AND "
+        if not og is None and pairs is None:
             values.append(og)
             conjonctions.append("orthogroup = ?")
 
@@ -1691,14 +1695,28 @@ class DB:
             conjonctions.append("(id_1 = ? OR id_2 = ?)")
             values.append(ref_seqid)
             values.append(ref_seqid)
+        
+        if not pairs is None:
+            if og is None:
+                raise RuntimeError("")
+            elif not ref_seqid is None:
+                raise RuntimeError("")
+            for curr_og, (id1, id2) in zip(og, pairs):
+                conj = f"(orthogroup=? AND ((id_1=? AND id_2=?) OR (id_1=? AND id_2=?)))"
+                conjonctions.append(conj)
+                values.extend([curr_og, id1, id2, id2, id1])
+            conj_op = " OR "
 
-        where = " AND ".join(conjonctions)
+        where = f"{conj_op}".join(conjonctions)
         query = (
             "SELECT id_1, id_2, identity "
             "FROM orthology_identity "
             f"WHERE {where};"
         )
         results = self.server.adaptor.execute_and_fetchall(query, values)
+
+        if not pairs is None:
+            return DB.to_pandas_frame(results, ["seqid_x", "seqid_y", "identity"])
         filtered_values = []
 
         for id_1, id_2, identity in results:
