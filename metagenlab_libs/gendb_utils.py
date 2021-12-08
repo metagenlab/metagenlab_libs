@@ -1142,9 +1142,9 @@ class DB:
         return {int(i[0]):i[1] for i in self.cursor.fetchall()}
 
 
-    def count_qc_warning(self, key_str=False):
+    def count_qc_warning(self, fastq_id_list, key_str=False):
         
-        df = self.get_fastq_metadata_list()[["fastq_id","value"]]
+        df = self.get_fastq_metadata_list(fastq_filter=fastq_id_list)[["fastq_id","value"]]
 
         term2n_warnings = df.query('value == "WARN"').groupby(["fastq_id"])['value'].count().to_dict()
 
@@ -2179,14 +2179,61 @@ class DB:
             
         return dict_file
 
+    def get_project_fastq_table(self, suproject_id_list=False, as_df=False, limit=None, offset=None, order_col=None, order=None):
+                
+        if suproject_id_list:
+            project_filter = 'where t1.subproject_id in (%s)' % ','.join([str(i) for i in suproject_id_list])
+        else:
+            project_filter = ''
+        if limit:
+            LIMIT = f'LIMIT {limit}'
+        else:
+            LIMIT = ''
+        if offset:
+            OFFSET = f'OFFSET {offset}'
+        else:
+            OFFSET = ''
+        if order_col:
+            ORDER = f'ORDER BY {order_col} {order}'
+        else:
+            ORDER = ''
 
-    def get_sample_table(self, suproject_id_list=False):
+        sql = f'''
+        select distinct t1.sample_id,t2.fastq_id,t3.sample_name,taxonomy, t3.date_received, run_name from GEN_subprojectsample t1
+        inner join GEN_fastqtosample t2 on t1.sample_id=t2.sample_id 
+        inner join GEN_sample t3 on t2.sample_id=t3.id 
+        inner join GEN_fastqfiles t4 on t2.fastq_id=t4.id 
+        inner join GEN_runs t5 on t4.run_id=t5.id
+        {project_filter}
+        {ORDER} {LIMIT} {OFFSET}
+        '''
+        print(sql)
+        if as_df:
+            return pandas.read_sql(sql, self.conn)
+        else:
+            self.cursor.execute(sql,) 
+            return self.cursor.fetchall()
+
+
+    def get_sample_table(self, suproject_id_list=False, as_df=False, limit=None, offset=None, order_col=None, order=None):
         
 
         project_filter = ''
         if suproject_id_list:
 
             project_filter = 'where t3.subproject_id in (%s)' % ','.join([str(i) for i in suproject_id_list])
+        if limit:
+            LIMIT = f'LIMIT {limit}'
+        else:
+            LIMIT = ''
+        if offset:
+            OFFSET = f'OFFSET {offset}'
+        else:
+            OFFSET = ''
+        if order_col:
+            ORDER = f'ORDER BY {order_col} {order}'
+        else:
+            ORDER = ''
 
         sql = f'''
         select distinct A.id,A.sample_type,A.sample_name,A.taxonomy,A.date_registered, A.date_received,A.n_fastq, count(t3.subproject_id ) as n_projects from (
@@ -2195,10 +2242,14 @@ class DB:
         group by t1.id) A  
         left join GEN_subprojectsample t3 on A.id=t3.sample_id
         {project_filter}
-        group by A.id 
+        group by A.id {ORDER} {LIMIT} {OFFSET}
         '''
-        self.cursor.execute(sql,) 
-        return self.cursor.fetchall()
+        print(sql)
+        if as_df:
+            return pandas.read_sql(sql, self.conn)
+        else:
+            self.cursor.execute(sql,) 
+            return self.cursor.fetchall()
     
     def get_analysis_fastq_list(self,analisis_id):
         
