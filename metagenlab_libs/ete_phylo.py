@@ -210,7 +210,7 @@ class ModuleCompletenessColumn(Column):
             text_face = TextFace(val)
         elif val==0:
             text_face = TextFace("C")
-        elif val>1:
+        elif val>=1:
             text_face = TextFace("I")
 
         if val == 0:
