@@ -1112,15 +1112,16 @@ class DB:
 
     
     def get_locus_to_genomes(self, locus_lst):
-        # quick and dirty, may need to regroup it with another function
+        # quick and dirty: may need to regroup it with another function
         values = ",".join("?" for _ in locus_lst)
         query = (
-            "SELECT locus_tag.value, entry.description "
+            "SELECT locus_tag.value, name.name "
             "FROM seqfeature_qualifier_value AS locus_tag "
             "INNER JOIN term AS locus_term ON locus_term.term_id=locus_tag.term_id "
             " AND locus_term.name=\"locus_tag\" "
             "INNER JOIN seqfeature AS feature ON feature.seqfeature_id=locus_tag.seqfeature_id "
             "INNER JOIN bioentry AS entry ON feature.bioentry_id=entry.bioentry_id "
+            "INNER JOIN taxon_name AS name ON entry.taxon_id = name.taxon_id "
             f"WHERE locus_tag.value IN ({values});"
         )
         results = self.server.adaptor.execute_and_fetchall(query, locus_lst)
