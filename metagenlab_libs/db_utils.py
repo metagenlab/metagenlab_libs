@@ -1164,13 +1164,14 @@ class DB:
             "WHERE plasmid.taxon_id=entry.taxon_id"
         )
         query = (
-            "SELECT entry.taxon_id, entry.description,  "
+            "SELECT entry.taxon_id, txn_name.name,  "
             f" CASE WHEN EXISTS ({has_plasmid_query}) THEN 1 ELSE 0 END "
             "FROM bioentry AS entry "
             "INNER JOIN bioentry_qualifier_value AS orga " 
+            "INNER JOIN taxon_name as txn_name ON entry.taxon_id=txn_name.taxon_id "
             "INNER JOIN term AS orga_term ON orga.term_id=orga_term.term_id "
             " AND orga_term.name=\"organism\" "
-            "GROUP BY taxon_id;" 
+            "GROUP BY entry.taxon_id;" 
         )
         descr = self.server.adaptor.execute_and_fetchall(query)
         columns = ["taxon_id", "description", "has_plasmid"]
