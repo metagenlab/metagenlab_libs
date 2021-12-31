@@ -2,9 +2,7 @@ import os
 import sys
 
 from BioSQL import BioSeqDatabase
-from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord #added
-from Bio.SeqFeature import SeqFeature, FeatureLocation #added
 
 from Bio.Seq import Seq
 from Bio.SeqUtils import GC
@@ -61,14 +59,35 @@ class DB:
         self.server.adaptor.execute(sql_index5,)
         self.server.adaptor.execute(sql_index6,)
 
-    def get_taxid_from_accession(self, accession):
+
+    def get_taxid_from_accession(self, accessions, look_on="locus_tag"):
+        plc = self.gen_placeholder_string(accessions)
+        if look_on=="locus_tag":
+            select = " acc.value , t1.taxon_id "
+            query = (
+                " INNER JOIN seqfeature AS fet ON fet.bioentry_id = t1.bioentry_id "
+                " INNER JOIN seqfeature_qualifier_value AS acc "
+                "     ON acc.seqfeature_id = fet.seqfeature_id "
+                " INNER JOIN term AS gene_term ON gene_term.term_id = fet.type_term_id "
+                "     AND gene_term.name = \"gene\" "
+                " INNER JOIN term AS lc ON lc.term_id = acc.term_id AND "
+                "     lc.name = \"locus_tag\" "
+                f" WHERE acc.value IN ({plc})"
+            )
+        elif look_on=="contig":
+            select = "t1.accession, t1.taxon_id "
+            query = f" WHERE t1.accession IN ({plc})"
+        else:
+            raise RuntimeError("Unknown option " + look_on + " expect either locus_tag or contig")
+
         sql = (
-            f"SELECT taxon_id "
-            f"FROM bioentry t1 INNER JOIN biodatabase t2 "
-            f"ON t1.biodatabase_id = t2.biodatabase_id "
-            f"WHERE t2.name={quote(self.db_name)} AND t1.accession={quote(accession)}"
+            f"SELECT {select} "
+            "FROM bioentry t1 "
+            f"{query};"
         )
-        return self.server.adaptor.execute_and_fetchall(sql,)[0][0]
+        results = self.server.adaptor.execute_and_fetchall(sql, accessions)
+        header = ["accession", "taxid"]
+        return DB.to_pandas_frame(results, header).set_index("accession")
 
 
     def get_taxid_from_seqid(self, seqids):
@@ -2244,12 +2263,6 @@ class DB:
         results = self.server.adaptor.execute_and_fetchall(sql)
         return {filename: entry_id for filename, entry_id in results}
 
-    def count_files(self):
-        sql = ("SELECT COUNT(*)"
-                "FROM filenames;"
-        )
-        number = str(self.server.adaptor.execute_and_fetchall(sql))
-        return number [2]
 
     def count_orthogroups(self):
         sql = ("SELECT COUNT(*)"
@@ -2258,6 +2271,7 @@ class DB:
         number = str(self.server.adaptor.execute_and_fetchall(sql))
         return number [2]
 
+
     def get_taxon_id_to_filenames(self):
         sql = (
             f"SELECT filename, taxon_id FROM filenames;"
@@ -2265,6 +2279,7 @@ class DB:
         hsh_entry_to_filenames = {}
         results = self.server.adaptor.execute_and_fetchall(sql)
         return {entry_id: filename for filename, entry_id in results}
+
 
     def get_bioentry_id_to_plasmid_contigs(self):
         sql = (
@@ -2363,57 +2378,3 @@ class DB:
         sequence = str(self.server.adaptor.execute_and_fetchall(sql))
         return sequence [0]
 
-
-"""
-    def location2plot(self,
-                  accession,
-                  out_name,
-                  start,
-                  end,
-                  cache,
-                  color_locus_list = [],
-                  region_highlight=[]):
-        import copy
-        if start < 0:
-            start=0
-        key = accession
-        biorecord = cache.get(key)
-        if biorecord:
-            print (key, "in memory")
-        else:
-            print (key, "NOT in memory")
-            cache_time = None
-
-            db=self.server[self.db_name]
-            new_record = db.lookup(accession=accession)
-            new_record_reformat = SeqRecord(Seq(new_record.seq.data),
-                                                         id=new_record.id, name=new_record.name,
-                                                         description=new_record.description,
-                                                         dbxrefs =new_record.dbxrefs,
-                                                         features=new_record.features,
-                                                         annotations=new_record.annotations)
-            cache.set(key, new_record_reformat, cache_time)
-            biorecord = cache.get(key)
-            if biorecord:
-                print (key, "in memory")
-
-        fake_feature = copy.copy(biorecord.features[1])
-        fake_feature.type = "tblast_target"
-        print(region_highlight[0], region_highlight[1])
-        fake_feature.location = FeatureLocation(region_highlight[0], region_highlight[1], strand=0)
-        biorecord.features.append(fake_feature)
-        print("start-end",start,end)
-        sub_record = biorecord[start:end]
-        print(sub_record.features)
-        if len(sub_record.features) > 0:
-            sub_record.features = ([sub_record.features[-1]] + sub_record.features[0:-1])
-        region_locus_list = plot_multiple_regions_crosslink([],
-                                                        [sub_record],
-                                                        [False],
-                                                        out_name,
-                                                        color_locus_list=color_locus_list)
-        return region_locus_list
-"""
-
-
-   
