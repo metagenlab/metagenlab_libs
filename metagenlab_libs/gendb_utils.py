@@ -819,6 +819,10 @@ class DB:
         else:
             return df
 
+    def plot_mutation_frequency_barplot(self, 
+                                        start_date, 
+                                        end_date,):
+        print("ok")
 
     def plot_metadata_prevalence(self,
                                 subproject_id_list=["137", "167"],
@@ -829,7 +833,9 @@ class DB:
                                 plot_type='area',
                                 hide_lowfreq=20,
                                 hide_absolute=True,
-                                start_date=None):
+                                start_date=None,
+                                end_date=None,
+                                return_df=False):
         '''
         Plot counts or percentage by week for the target <term_name> (e.g pangolin_lineage, qc_status)
         possibility to combined unfrequent values into a single category by using the hide_lowfreq parameter. 
@@ -849,9 +855,12 @@ class DB:
                                      aggfunc=lambda x: ' '.join(x))
 
         df_metadata = df_metadata[df_metadata["registration_date"].notnull()] 
-        df_metadata = df_metadata[df_metadata["qc_status"].isin(qc_filter)] 
+        df_metadata = df_metadata[df_metadata["qc_status"].isin(qc_filter)]
+        
         if start_date:
             df_metadata = df_metadata[df_metadata['registration_date'] >= start_date]
+        if end_date:
+            df_metadata = df_metadata[df_metadata['registration_date'] <= end_date]
 
         df_metadata["registration_date"] = [datetime.datetime.strptime(i, '%Y-%m-%d') for i in df_metadata["registration_date"]]
 
@@ -937,7 +946,10 @@ class DB:
         for trace in fig['data']: 
             if(trace['name'] == '0'): trace['showlegend'] = False
 
-        return fig
+        if not return_df:
+            return fig
+        else:
+            return df_metadata, fig
 
 
     def get_date_range_from_week(self, p_year,p_week):
