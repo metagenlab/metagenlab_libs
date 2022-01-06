@@ -360,7 +360,7 @@ class DB:
         def calculate(s):
             taxid = str(s["species_taxon_id"])
             n_genomes = taxid2n_genomes[taxid]
-            print("taxid, n genomes", taxid, n_genomes)
+            #print("taxid, n genomes", taxid, n_genomes)
             s["freq"] = round((float(s["n"])/n_genomes) * 100, 2)
             return s
         if percentages:
@@ -1072,7 +1072,7 @@ class DB:
         #print(species_median_N_core.head())
         species_median_N_core["n_core_90"] = pandas.to_numeric(species_median_N_core["n_core_90"]) 
         species_median_N_core["taxon_id"] = species_median_N_core["taxon_id"].astype(str) 
-        taxid2core_VF_median = species_median_N_core.groupby(["taxon_id"]).mean().to_dict()["n_core_90"]
+        taxid2core_VF_median = species_median_N_core.groupby(["taxon_id"]).median().to_dict()["n_core_90"]
 
         sql = '''
         select taxon_id,value as n_pan_90 from assembly_statistics t1 
@@ -1081,7 +1081,7 @@ class DB:
         species_median_N_pan = pandas.read_sql(sql, self.conn)
         species_median_N_pan["n_pan_90"] = pandas.to_numeric(species_median_N_pan["n_pan_90"])
         species_median_N_pan["taxon_id"] = species_median_N_pan["taxon_id"].astype(str) 
-        taxid2pan_VF_median = species_median_N_pan.groupby(["taxon_id"]).mean().to_dict()["n_pan_90"]
+        taxid2pan_VF_median = species_median_N_pan.groupby(["taxon_id"]).median().to_dict()["n_pan_90"]
         
         taxid_list = set(list(taxid2pan_VF_median.keys()) + list(taxid2core_VF_median.keys()))
         for taxid in taxid_list:
@@ -1101,8 +1101,14 @@ class DB:
                 #print("taxid",taxid,"n combined", combined)
                 #print("core", taxid2core_VF_median[taxid])
                 #print("pan", taxid2pan_VF_median[taxid])
-                taxid2proportion_core[taxid] = round((taxid2core_VF_median[taxid] / combined) * 100, 2)
-                taxid2proportion_pan[taxid] = round((taxid2pan_VF_median[taxid] / combined) * 100, 2)
+                try:
+                    taxid2proportion_core[taxid] = round((taxid2core_VF_median[taxid] / combined) * 100, 2)
+                except:
+                    taxid2proportion_core[taxid] = 0
+                try:
+                    taxid2proportion_pan[taxid] = round((taxid2pan_VF_median[taxid] / combined) * 100, 2)
+                except:
+                    taxid2proportion_pan[taxid] = 0
             return taxid2proportion_core, taxid2proportion_pan
 
     def get_assemblies_size(self,):
