@@ -193,6 +193,7 @@ class EteTool():
             try:
                 value = taxon2value[lf.name]
             except KeyError:
+                print(f"{header_name}: No value for\t{lf.name}")
                 value = 0
 
             if show_values:
