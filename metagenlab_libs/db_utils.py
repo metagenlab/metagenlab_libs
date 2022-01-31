@@ -298,7 +298,6 @@ class DB:
         )
         self.server.adaptor.execute(query,)
 
-
     def load_diamond_refseq_match_id(self, data):
         self.load_data_into_table("diamond_refseq_match_id", data)
 
