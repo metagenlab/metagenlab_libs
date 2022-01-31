@@ -165,19 +165,22 @@ class DB:
 
 
     # Returns all refseq hits associated with a given orthogroup
-    def get_diamond_match_for_og(self, og):
+    def get_diamond_match_for_og(self, og, sort_by_evalue=False):
+        sort = ""
+        if sort_by_evalue:
+            sort = "ORDER BY eval ASC"
         query = (
-            "SELECT match_id.accession, match_id.organism, hit.hit_count "
-            "FROM og_hits " 
+            "SELECT match_id.accession, MIN(hit.evalue) AS eval "
+            "FROM og_hits "
             "INNER JOIN sequence_hash_dictionnary AS hsh ON hsh.seqid = og_hits.seqid "
             "INNER JOIN diamond_refseq AS hit ON hit.seq_hash = hsh.hsh "
             "INNER JOIN diamond_refseq_match_id AS match_id ON hit.sseqid = match_id.match_id "
             f"WHERE og_hits.orthogroup={og} "
-            "GROUP BY match_id.accession, match_id.taxid ORDER BY hit.hit_count ASC;" 
+            "GROUP BY match_id.accession "
+            f"{sort};"
         )
         results = self.server.adaptor.execute_and_fetchall(query)
-        gen = ((line[0], line[1]) for line in results)
-        return gen
+        return DB.to_pandas_frame(results, ["accession", "evalue"])
 
 
     def get_all_orthogroups(self, min_size=None):
@@ -294,6 +297,7 @@ class DB:
             "PRIMARY KEY(match_id));"
         )
         self.server.adaptor.execute(query,)
+
 
     def load_diamond_refseq_match_id(self, data):
         self.load_data_into_table("diamond_refseq_match_id", data)
