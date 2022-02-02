@@ -49,6 +49,8 @@ MAX_N_QUERIES = 10
 DEFAULT_N_THREADS = 1
 DEFAULT_KO_DIR = "tmp"
 
+N_RETRY = 5
+
 def create_data_table(db):
     entry_list = [
         ("orthology", "mandatory", False),
@@ -246,19 +248,28 @@ def download_ko_genes(gene_queue, tmp_dir):
                 break
             done = True
 
-        try:
-            buff = REST.kegg_get(queries)
-            buff.reconfigure(encoding="Latin-1")
-            text_version = buff.read()
-            output_file = open(tmp_dir+"/"+queries[0], "w")
-            output_file.write(text_version)
-            output_file.close()
-            # pause to not overload the server
-            time.sleep(5)
-        except Exception as e:
-            print(e)
-            print(f"ERROR: Could not download one of the following kegg ")
-            print(",".join(queries))
+        retries = 0
+        while retries < N_RETRY:
+            try:
+                buff = REST.kegg_get(queries)
+                buff.reconfigure(encoding="Latin-1")
+                text_version = buff.read()
+                output_file = open(tmp_dir+"/"+queries[0], "w")
+                output_file.write(text_version)
+                output_file.close()
+
+                # pause to not overload the server
+                time.sleep(10)
+            except Exception as e:
+
+                if retries == N_RETRY:
+                    print(e)
+                    print(f"ERROR: Could not download one of the following kegg ")
+                    print(",".join(queries))
+                else:
+                    # wait for a bit as the server may be overloaded
+                    time.sleep(60)
+                retries += 1
 
 
 def download_ko_files(ko_dir, n_threads=DEFAULT_N_THREADS):
