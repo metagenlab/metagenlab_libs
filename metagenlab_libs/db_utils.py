@@ -69,7 +69,7 @@ class DB:
                 " INNER JOIN seqfeature_qualifier_value AS acc "
                 "     ON acc.seqfeature_id = fet.seqfeature_id "
                 " INNER JOIN term AS gene_term ON gene_term.term_id = fet.type_term_id "
-                "     AND gene_term.name = \"gene\" "
+                "     AND gene_term.name = \"CDS\" "
                 " INNER JOIN term AS lc ON lc.term_id = acc.term_id AND "
                 "     lc.name = \"locus_tag\" "
                 f" WHERE acc.value IN ({plc})"

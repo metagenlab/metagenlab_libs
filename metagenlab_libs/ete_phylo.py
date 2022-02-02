@@ -134,11 +134,11 @@ class Column:
                 setattr(text_face, name, value)
 
 
-#
 class SimpleColorColumn(Column):
     def __init__(self, values, header=None, use_col=True,
             face_params=None, header_params=None, col_func=None,
-            default_val=0, default_val_is_num=False, color_gradient=False):
+            default_val=0, default_val_is_num=False, color_gradient=False,
+            gradient_value_range=None):
         super().__init__(header, face_params, header_params)
         self.values = values
         self.header = header
@@ -152,11 +152,13 @@ class SimpleColorColumn(Column):
         self.col_func = col_func
         self.color_gradient = color_gradient
         if color_gradient:
-            my_values = values
-            if default_val_is_num:
-                my_values = values+[default_val]
-            cm, _ = colors.get_continuous_scale(my_values)
-            self.cm = cm
+            if not gradient_value_range is None:
+                self.cm, _ = colors.get_continuous_scale(gradient_value_range)
+            else:
+                my_values = list(values.values())
+                if default_val_is_num:
+                    my_values.append(default_val)
+                self.cm, _ = colors.get_continuous_scale(my_values)
 
     def fromSeries(series, header=None, cls=None, **args):
         values = series.to_dict()
@@ -175,7 +177,8 @@ class SimpleColorColumn(Column):
                 italic = "ITalic"
 
         text_face = TextFace(str(val).center(8-len(str(val))), fstyle=italic)
-        if (val==self.default_val and self.default_val_is_num) or (val!=self.default_val and self.color_gradient):
+        if (val==self.default_val and self.default_val_is_num) or \
+                (val!=self.default_val and self.color_gradient):
             rgba = self.cm.to_rgba(val, bytes=True)
             text_face.inner_background.color = colors.to_rgb_str(rgba)
             luminance = colors.get_luminance(rgba)
