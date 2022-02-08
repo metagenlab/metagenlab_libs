@@ -1063,6 +1063,7 @@ class DB:
     def create_gene_phylogeny_table(self, data):
         sql = (
             "CREATE TABLE gene_phylogeny (orthogroup_id INTEGER, tree TEXT, "
+            " is_core INTEGER, og_size INTEGER, num_genomes INTEGER, "
             "PRIMARY KEY(orthogroup_id)); "
         )
         self.server.adaptor.execute(sql,)
