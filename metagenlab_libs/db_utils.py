@@ -191,15 +191,19 @@ class DB:
         return DB.to_pandas_frame(results, ["accession", "evalue"])
 
 
-    def get_all_orthogroups(self, min_size=None):
+    def get_n_orthogroups(self, only_core=False):
+        where = ""
+        if only_core:
+            where = "WHERE is_core=1"
+
         query = (
-            "SELECT orthogroup, COUNT(*) "
-            "FROM og_hits "
-            "GROUP BY orthogroup;" 
+            "SELECT COUNT(*)"
+            "FROM gene_phylogeny "
+            f"{where};"
         )
         results = self.server.adaptor.execute_and_fetchall(query)
-       
-        return results
+        return results[0][0]
+
 
     def get_all_sequences_for_orthogroup(self, orthogroup):
         from Bio import SeqRecord
