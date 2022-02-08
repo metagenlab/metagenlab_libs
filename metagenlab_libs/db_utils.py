@@ -152,12 +152,20 @@ class DB:
         return DB.to_pandas_frame(results, ["match_id", "length", "evalue", "bitscore", "gaps", "pident"])
 
 
-    def get_refseq_matches_info(self, match_ids):
+    def get_refseq_matches_info(self, match_ids, search_on="match_id"):
         placeholder = self.gen_placeholder_string(match_ids)
+
+        if search_on=="accession":
+            column = "accession"
+        elif search_on=="match_id":
+            column = "match_id"
+        else:
+            raise RuntimeError("Unsupported search term")
+
         query = (
             "SELECT match_id, accession, organism, description "
             "FROM diamond_refseq_match_id "
-            f"WHERE match_id IN ({placeholder});"
+            f"WHERE {column} IN ({placeholder});"
         )
         results = self.server.adaptor.execute_and_fetchall(query, match_ids)
         df = DB.to_pandas_frame(results, ["match_id", "accession", "organism", "description"])
@@ -1032,6 +1040,7 @@ class DB:
             )
             self.server.adaptor.execute(query,)
 
+
     def create_BBH_phylogeny_table(self, data):
         sql = (
             "CREATE TABLE BBH_phylogeny (orthogroup_id INTEGER, tree TEXT, "
@@ -1039,6 +1048,17 @@ class DB:
         )
         self.server.adaptor.execute(sql,)
         self.load_data_into_table("BBH_phylogeny", data)
+
+    
+    def get_refseq_phylogeny(self, og_id):
+        query = (
+            "SELECT tree FROM BBH_phylogeny WHERE orthogroup_id = ?;"
+        )
+        results = self.server.adaptor.execute_and_fetchall(query, [og_id])
+        if len(results) != 1:
+            raise RuntimeError("No refseq best hit tree")
+        return results[0][0]
+
 
     def create_gene_phylogeny_table(self, data):
         sql = (
@@ -1048,9 +1068,11 @@ class DB:
         self.server.adaptor.execute(sql,)
         self.load_data_into_table("gene_phylogeny", data)
 
+
     def create_og_matrix_indices(self):
         sql_1 = "CREATE INDEX oio ON orthology_identity(orthogroup);"
         self.server.adaptor.execute(sql_1,)
+
 
     def load_og_hits(self, lst_to_load):
         query = (
