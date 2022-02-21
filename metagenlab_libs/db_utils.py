@@ -191,6 +191,13 @@ class DB:
         return DB.to_pandas_frame(results, ["accession", "evalue"])
 
 
+    def get_all_orthogroups(self):
+        query = ("SELECT orthogroup_id, og_size "
+            "FROM gene_phylogeny;"
+        )
+        return self.server.adaptor.execute_and_fetchall(query)
+
+
     def get_n_orthogroups(self, only_core=False):
         where = ""
         if only_core:
