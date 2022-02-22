@@ -26,6 +26,14 @@ import pandas as pd
 def quote(v):
     return f"\"{v}\""
 
+
+class NoPhylogenyException(Exception):
+    """ Used when the user tries to get a phylogeny for an orthogroup
+     too small to have one
+    """
+    pass
+
+
 class DB:
 
     def __init__(self, server, db_name):
@@ -984,7 +992,7 @@ class DB:
         )
         results = self.server.adaptor.execute_and_fetchall(query, [og])
         if len(results)!=1:
-            raise RuntimeError(f"Could not find phylogeny for orthogroup {og}")
+            raise NoPhylogenyException
         return results[0][0]
 
 
