@@ -83,8 +83,8 @@ class DB:
                 f" WHERE acc.value IN ({plc})"
             )
         elif look_on=="contig":
-            select = "t1.accession, t1.taxon_id "
-            query = f" WHERE t1.accession IN ({plc})"
+            select = "t1.name, t1.taxon_id "
+            query = f" WHERE t1.name IN ({plc})"
         else:
             raise RuntimeError("Unknown option " + look_on + " expect either locus_tag or contig")
 
