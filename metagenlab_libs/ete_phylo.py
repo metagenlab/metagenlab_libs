@@ -63,15 +63,20 @@ class EteTree:
             idx = index
         else:
             raise Exception("Unsupported indexing type ", self.leaf_name_type)
+        fgcolor = "black"
+        if not self.highlight_leaves is None:
+            if idx in highlight_leaves:
+                fgcolor = "red"
         label = self.leaves_name.get(idx, self.default_val)
-        t = TextFace(label, fgcolor = "black", fsize = 7, fstyle = "italic")
+        t = TextFace(label, fgcolor = fgcolor, fsize = 7, fstyle = "italic")
         t.margin_right=10
         return t
 
-    def rename_leaves(self, hsh_names, default_val="-", leaf_name_type=int):
+    def rename_leaves(self, hsh_names, default_val="-", leaf_name_type=int, highlight_leaves=None):
         self.default_val = default_val
         if not isinstance(hsh_names, dict):
             raise Exception("Expects dict type for hsh_names")
+        self.highlight_leaves = highlight_leaves
         self.leaves_name = hsh_names
         self.leaf_name_type = leaf_name_type
 
@@ -135,16 +140,20 @@ class Column:
 
 
 class SimpleColorColumn(Column):
+    # should really be refactored.
+    # Separation of concern sometimes broken...
+
     def __init__(self, values, header=None, use_col=True,
             face_params=None, header_params=None, col_func=None,
             default_val=0, default_val_is_num=False, color_gradient=False,
-            gradient_value_range=None):
+            gradient_value_range=None, is_str_index=False):
         super().__init__(header, face_params, header_params)
         self.values = values
         self.header = header
         self.use_col = use_col
         self.default_val = default_val
         self.default_val_is_num = default_val_is_num
+        self.is_str_index = is_str_index
         if face_params is None or "color" not in face_params:
             self.col = EteTree.BLUE
         else:
@@ -168,7 +177,8 @@ class SimpleColorColumn(Column):
             return cls(values, header=header, **args)
 
     def get_face(self, index):
-        index = int(index)
+        if not self.is_str_index:
+            index = int(index)
         val = self.values.get(index, self.default_val)
 
         italic = "normal"

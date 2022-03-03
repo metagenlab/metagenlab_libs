@@ -259,7 +259,7 @@ def download_ko_genes(gene_queue, tmp_dir):
                 output_file.close()
 
                 # pause to not overload the server
-                time.sleep(10)
+                time.sleep(2)
             except Exception as e:
 
                 if retries == N_RETRY:
