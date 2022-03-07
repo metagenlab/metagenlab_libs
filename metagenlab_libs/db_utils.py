@@ -593,6 +593,7 @@ class DB:
         )
         self.server.adaptor.execute(sql)
 
+
     def get_all_modules_definition(self, allow_signature=False):
         where = ""
         if not allow_signature:
@@ -665,11 +666,24 @@ class DB:
         return hsh_results
 
 
+    def get_pathways(self):
+        query = (
+            "SELECT pathway_id, desc "
+            "FROM ko_pathway_def;"
+        )
+        results = self.server.adaptor.execute_and_fetchall(query)
+        arr = []
+        for pat_id, desc in results:
+            arr.append((pat_id, desc))
+        return arr
+
+
     def get_ko_pathways(self, ids, search_on="ko", as_df=False):
         if search_on!="ko" and search_on!="pathway":
             raise RuntimeError("Search term not supported: "+search_on)
 
-        entries = ",".join("?" for i in ids)
+        if not ids is None:
+            entries = ",".join("?" for i in ids)
 
         if search_on=="ko":
             where = "ktp.ko_id"
@@ -788,10 +802,16 @@ class DB:
 
 
     def get_modules_info(self, ids, search_on="module", as_pandas=False):
-        if search_on != "module" and search_on != "category" and search_on != "subcategory":
+        if not search_on is None and search_on != "module" and \
+                search_on != "category" and search_on != "subcategory":
             raise RuntimeError(f"Unsupported search term: {search_on}")
 
-        fmt = ",".join("?" for i in ids)
+        if not ids is None and search_on is None:
+            raise RuntimeError("Invalid combination of ids and search_on being None")
+
+        if not ids is None:
+            fmt = ",".join("?" for i in ids)
+
         where_term = ""
         if search_on=="module":
             where_term = f"module_id IN ({fmt})"
@@ -799,7 +819,8 @@ class DB:
             where_term = f"cat.class_id IN ({fmt})"
         elif search_on=="subcategory":
             where_term = f"subcat.class_id IN ({fmt})"
-
+        elif search_on is None:
+            where_term = "1"
 
         query = (
             "SELECT module_id, desc, definition, cat.descr, subcat.descr "
@@ -992,6 +1013,8 @@ class DB:
         )
         results = self.server.adaptor.execute_and_fetchall(query, [og])
         if len(results)!=1:
+            raise NoPhylogenyException
+        if len(results[0][0]) == 0:
             raise NoPhylogenyException
         return results[0][0]
 

@@ -14,6 +14,7 @@ class SearchBarSchema(SchemaClass):
     description = TEXT(stored=True)
     organism = TEXT(stored=True)
     locus_tag = KEYWORD(stored=True)
+    og = KEYWORD(stored=True)
 
 
 field_list = ["entry_type", "name", "description", "organism", "locus_tag"]
@@ -24,8 +25,9 @@ class EntryTypes:
     COG  = "C"
     Gene = "G"
     KO   = "K"
-    PFAM = "P"
-    OG   = "O"
+    PFAM = "D"
+    Module = "M"
+    Pathway = "P"
 
 
 class ChlamdbIndex:
