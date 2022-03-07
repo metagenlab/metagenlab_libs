@@ -12,13 +12,13 @@ import pandas as pd
 
 
 # This file defines a class DB, that encapsulates all the SQL requests
-# necessary to create the chlamdb database.
+# necessary to create the zDB database.
 # In the future, the goal is to import all database queries needed by the
-# chlamdb website as methods of this class.
+# zDB website as methods of this class.
 #
 # This improves code readability by removing SQL queries from the main python
 # code and more importantly, it would allow to change of database without having
-# to modify chlamdb's code.
+# to modify zDB's code.
 
 
 # to litteral
@@ -2407,9 +2407,9 @@ class DB:
     # of database? Would allow to avoid code duplication if several database
     # types are to be included.
     def load_db(db_file, params):
-        sqlpsw = params.get("chlamdb.db_psswd", "")
-        db_type = params["chlamdb.db_type"]
-        db_name = params["chlamdb.db_name"]
+        sqlpsw = params.get("zdb.psswd", "")
+        db_type = params["zdb.db_type"]
+        db_name = params["zdb.psswd"]
 
         if db_type != "sqlite":
             server = BioSeqDatabase.open_database(driver="MySQLdb", 
@@ -2429,7 +2429,7 @@ class DB:
 
 
     def load_db_from_name(db_name, db_type = "sqlite"):
-        params = {"chlamdb.db_type" : db_type, "chlamdb.db_name" : db_name}
+        params = {"zdb.db_type" : db_type, "zdb.db_name" : db_name}
         return DB.load_db(db_name, params)
 
 
