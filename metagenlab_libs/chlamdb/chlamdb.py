@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # This script is used to generate the skeleton of the database
 # used by chlamdb. The entries will be filled by the annotation
@@ -35,9 +35,6 @@ import time
 # to be removed in favor of a local version
 from Bio.KEGG import REST
 
-DEFAULT_PSSWD = ""
-DEFAULT_TYPE = "sqlite"
-DEFAULT_DB_NAME = "George"
 
 # from REST documentation, can get a max of 10 queries 
 # in kegg_get
@@ -46,7 +43,7 @@ MAX_N_QUERIES = 10
 # number of threads that will be used simultaneously
 # to download the ko genes. 5 seems a good compromise
 # between being blacklisted and speed
-DEFAULT_N_THREADS = 1
+DEFAULT_N_THREADS = 5
 DEFAULT_KO_DIR = "tmp"
 
 N_RETRY = 5
@@ -73,9 +70,9 @@ def create_data_table(db):
     db.commit()
 
 def setup_biodb(kwargs):
-    sqlpsw = kwargs.get("db_psswd", DEFAULT_PSSWD)
-    db_type = kwargs.get("db_type", DEFAULT_TYPE)
-    db_name = kwargs.get("db_name", DEFAULT_DB_NAME)
+    sqlpsw = kwargs["db_psswd"]
+    db_type = kwargs["db_type"]
+    db_name = kwargs["db_name"]
     sql_def_file = kwargs.get("biosql_schema", "")
 
     if db_type=="sqlite":
@@ -103,9 +100,9 @@ def setup_biodb(kwargs):
 
     # not really logical to me, but creating a database
     # from the biosql is necessary
-    chlamdb_args = {"chlamdb.db_type": db_type,
-            "chlamdb.db_name": db_name,
-            "chlamdb.db_psswd": sqlpsw}
+    chlamdb_args = {"zdb.db_type": db_type,
+            "zdb.db_name": db_name,
+            "zdb.psswd": sqlpsw}
     db = db_utils.DB.load_db(db_name, chlamdb_args)
     db.create_biosql_database(chlamdb_args)
     db.commit()
@@ -408,8 +405,8 @@ def setup_cog(db, cog_dir):
 
 parser = argparse.ArgumentParser(description = "Creates a chlamdb database skeleton")
 
-parser.add_argument("--db_name", nargs="?", default=DEFAULT_DB_NAME,
-        help=f"name of the database (default name {DEFAULT_DB_NAME})")
+parser.add_argument("--db_name", nargs="?", default="zdb_base",
+        help=f"name of the database (default name zdb_base)")
 
 parser.add_argument("--load_cog", action="store_true",
         help="load cog definitions (default no)")
@@ -420,10 +417,10 @@ parser.add_argument("--cog_dir", nargs="?", default="./",
 parser.add_argument("--load_kegg", action="store_true",
         help="load kegg definitions (default no, must specify ko genes dir)")
 
-parser.add_argument("--db_type", nargs="?", default=DEFAULT_TYPE,
+parser.add_argument("--db_type", nargs="?", default="sqlite",
         help="database type (either sqlite or mysql)")
 
-parser.add_argument("--db_psswd", nargs="+", default=DEFAULT_PSSWD,
+parser.add_argument("--db_psswd", nargs="+", default="",
         help="set db password (default none)")
 
 parser.add_argument("--download_ko_files", action="store_true",
@@ -455,9 +452,9 @@ if not args.get("skip_biodb"):
     create_data_table(db)
 
 if db == None:
-    db_name = args.get("db_name", DEFAULT_DB_NAME)
-    db_type = args.get("db_type", DEFAULT_TYPE)
-    db_psswd = args.get("db_psswd", DEFAULT_PSSWD)
+    db_name = args["db_name"]
+    db_type = args["db_type"]
+    db_psswd = args["db_psswd"]
     chlamdb_args = { "chlamdb.db_type" : db_type,
             "chlamdb.db_name" : db_name,
             "chlamdb.db_psswd" : db_psswd}
