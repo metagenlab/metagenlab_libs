@@ -754,6 +754,33 @@ class DB:
         return hsh_results
 
 
+    def get_module_completeness(self, taxids):
+        plchd = self.gen_placeholder_string(ids)
+        query = (
+            "SELECT module_id, taxid "
+            "FROM module_completeness "
+            f"WHERE taxid IN ({plchd});"
+        )
+        results = self.server.adaptor.execute_and_fetchall(query, taxids)
+        return DB.to_pandas_frame(results, ["module_id", "taxid"])
+
+
+    def create_module_completeness_table(self):
+        query = (
+            f"CREATE TABLE module_completeness ( "
+            f"module_id INT, "
+            f"taxid INT,"
+            f"PRIMARY KEY(module_id, taxid));"
+        )
+        self.server.adaptor.execute(query)
+        sql = "CREATE INDEX mdi_taxid ON module_completeness(taxid);"
+        self.server.adaptor.execute(sql)
+
+
+    def load_module_completeness(self, modules):
+        self.load_data_into_table("module_completeness", modules)
+
+
     def get_ko_count_cat(self, subcategory=None, taxon_ids=None,
             subcategory_name=None, category=None, index=True):
 
