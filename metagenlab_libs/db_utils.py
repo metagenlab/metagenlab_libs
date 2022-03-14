@@ -359,6 +359,9 @@ class DB:
         self.load_data_into_table("taxonomy_mapping", lst_values)
 
     def load_data_into_table(self, table, data):
+        if len(data)==0:
+            return
+
         fmt_string = ", ".join("?" for i in range(len(data[0])))
         sql_string = f"INSERT into {table} VALUES ({fmt_string});"
         self.server.adaptor.executemany(sql_string, data)
@@ -778,6 +781,8 @@ class DB:
 
 
     def load_module_completeness(self, modules):
+        if len(modules)==0:
+            return
         self.load_data_into_table("module_completeness", modules)
 
 
