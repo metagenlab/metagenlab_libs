@@ -2409,7 +2409,7 @@ class DB:
     def load_db(db_file, params):
         sqlpsw = params.get("zdb.psswd", "")
         db_type = params["zdb.db_type"]
-        db_name = params["zdb.psswd"]
+        db_name = params["zdb.db_name"]
 
         if db_type != "sqlite":
             server = BioSeqDatabase.open_database(driver="MySQLdb", 
