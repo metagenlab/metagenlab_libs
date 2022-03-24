@@ -359,6 +359,9 @@ class DB:
         self.load_data_into_table("taxonomy_mapping", lst_values)
 
     def load_data_into_table(self, table, data):
+        if len(data)==0:
+            return
+
         fmt_string = ", ".join("?" for i in range(len(data[0])))
         sql_string = f"INSERT into {table} VALUES ({fmt_string});"
         self.server.adaptor.executemany(sql_string, data)
@@ -665,17 +668,18 @@ class DB:
             hsh_results[line[0]] = line[1]
         return hsh_results
 
+    def get_pathways (self):
 
-    def get_pathways(self):
         query = (
-            "SELECT pathway_id, desc "
-            "FROM ko_pathway_def;"
+            "SELECT  ko_to_pathway.pathway_id, ko_pathway_def.desc "
+            "FROM ko_hits "
+            "JOIN ko_to_pathway ON ko_hits.ko_id = ko_to_pathway.ko_id "
+            "JOIN ko_pathway_def ON ko_pathway_def.pathway_id = ko_to_pathway.pathway_id "
+            "GROUP BY  ko_pathway_def.desc;"
         )
         results = self.server.adaptor.execute_and_fetchall(query)
-        arr = []
-        for pat_id, desc in results:
-            arr.append((pat_id, desc))
-        return arr
+        return [(line[0], line[1]) for line in results]
+
 
 
     def get_ko_pathways(self, ids, search_on="ko", as_df=False):
@@ -752,6 +756,35 @@ class DB:
                 data.append((line[1], line[2]))
             hsh_results[ko_id] = data
         return hsh_results
+
+
+    def get_module_completeness(self, taxids):
+        plchd = self.gen_placeholder_string(ids)
+        query = (
+            "SELECT module_id, taxid "
+            "FROM module_completeness "
+            f"WHERE taxid IN ({plchd});"
+        )
+        results = self.server.adaptor.execute_and_fetchall(query, taxids)
+        return DB.to_pandas_frame(results, ["module_id", "taxid"])
+
+
+    def create_module_completeness_table(self):
+        query = (
+            f"CREATE TABLE module_completeness ( "
+            f"module_id INT, "
+            f"taxid INT,"
+            f"PRIMARY KEY(module_id, taxid));"
+        )
+        self.server.adaptor.execute(query)
+        sql = "CREATE INDEX mdi_taxid ON module_completeness(taxid);"
+        self.server.adaptor.execute(sql)
+
+
+    def load_module_completeness(self, modules):
+        if len(modules)==0:
+            return
+        self.load_data_into_table("module_completeness", modules)
 
 
     def get_ko_count_cat(self, subcategory=None, taxon_ids=None,
