@@ -671,11 +671,11 @@ class DB:
     def get_pathways (self):
 
         query = (
-            "SELECT  ko_to_pathway.pathway_id, ko_pathway_def.desc "
+            "SELECT ko_to_pathway.pathway_id, ko_pathway_def.desc "
             "FROM ko_hits "
             "JOIN ko_to_pathway ON ko_hits.ko_id = ko_to_pathway.ko_id "
             "JOIN ko_pathway_def ON ko_pathway_def.pathway_id = ko_to_pathway.pathway_id "
-            "GROUP BY  ko_pathway_def.desc;"
+            "GROUP BY ko_pathway_def.desc;"
         )
         results = self.server.adaptor.execute_and_fetchall(query)
         return [(line[0], line[1]) for line in results]
@@ -2323,9 +2323,6 @@ class DB:
         if not plasmids is None:
             all_ids += plasmids
         results = self.server.adaptor.execute_and_fetchall(query, all_ids)
-
-        if len(results) == 0:
-            return pd.DataFrame()
 
         # ugly code, open for improvements
         if indexing=="taxid" or indexing=="bioentry":
