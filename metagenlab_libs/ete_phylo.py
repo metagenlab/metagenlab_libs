@@ -186,7 +186,7 @@ class SimpleColorColumn(Column):
             if self.face_params.get("italic", False):
                 italic = "ITalic"
 
-        text_face = TextFace(str(val).center(8-len(str(val))), fstyle=italic)
+        text_face = TextFace(str(val), fstyle=italic)
         if (val==self.default_val and self.default_val_is_num) or \
                 (val!=self.default_val and self.color_gradient):
             rgba = self.cm.to_rgba(val, bytes=True)
