@@ -668,17 +668,18 @@ class DB:
             hsh_results[line[0]] = line[1]
         return hsh_results
 
+    def get_pathways (self):
 
-    def get_pathways(self):
         query = (
-            "SELECT pathway_id, desc "
-            "FROM ko_pathway_def;"
+            "SELECT ko_to_pathway.pathway_id, ko_pathway_def.desc "
+            "FROM ko_hits "
+            "JOIN ko_to_pathway ON ko_hits.ko_id = ko_to_pathway.ko_id "
+            "JOIN ko_pathway_def ON ko_pathway_def.pathway_id = ko_to_pathway.pathway_id "
+            "GROUP BY ko_pathway_def.desc;"
         )
         results = self.server.adaptor.execute_and_fetchall(query)
-        arr = []
-        for pat_id, desc in results:
-            arr.append((pat_id, desc))
-        return arr
+        return [(line[0], line[1]) for line in results]
+
 
 
     def get_ko_pathways(self, ids, search_on="ko", as_df=False):
@@ -2322,9 +2323,6 @@ class DB:
         if not plasmids is None:
             all_ids += plasmids
         results = self.server.adaptor.execute_and_fetchall(query, all_ids)
-
-        if len(results) == 0:
-            return pd.DataFrame()
 
         # ugly code, open for improvements
         if indexing=="taxid" or indexing=="bioentry":
