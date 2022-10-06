@@ -3,6 +3,30 @@
 import matplotlib as mpl
 import matplotlib.cm as cm
 
+
+def to_rgb_str(rgba):
+    """
+    Encodes a rgba tuple in the form of a #rrggbb string in hexadecimal
+    notation. This is mostly used to convert the rgba tuple from matplotlib
+    colormap to ete tree drawing engine. As ete3 requires the precise #rrggbb
+    format, add an extra 0 when number are lower than 16.
+    """
+
+    string_vals = []
+    for val in rgba[0:3]:
+        if val==0:
+            string_vals.append("00")
+        elif val<=15:
+            string_vals.append("0"+hex(val).lstrip("0x"))
+        else:
+            string_vals.append(hex(val).lstrip("0x"))
+    return "#"+"".join(string_vals)
+
+
+def get_luminance(rgba):
+    return (0.299*rgba[0]+0.587*rgba[1]+0.114*rgba[2])/255
+
+
 def get_spaced_colors(n):
     
     '''
@@ -30,7 +54,6 @@ def get_categorical_color_scale(value_list):
 
 def get_continuous_scale(value_list, 
                          cm_scale="OrRd"):
-    
         '''
         Generate color scale best of a list of value using maplotlib
         Return the scale and the max value.
