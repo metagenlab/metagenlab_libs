@@ -319,6 +319,8 @@ class EteTool():
         except:
             pass
     
+        self.tree.ladderize()
+        
         self.tss = TreeStyle()
         self.tss.draw_guiding_lines = True
         self.tss.guiding_lines_color = "gray"
@@ -354,12 +356,12 @@ class EteTool():
                     label = '%s (%s)' % (taxon2new_taxon[lf.name], lf.name)
                 else:
                     label = 'n/a'
-            #print ("add_face", add_face)
-            #if add_face:
-            #    n = TextFace(label, fgcolor = "black", fsize = 12, fstyle = 'italic')
-            #    lf.add_face(n, 0)
+            print ("add_face", add_face)
+            if add_face:
+                n = TextFace(label, fgcolor = "black", fsize = 12, fstyle = 'italic')
+                lf.add_face(n, 0)
             lf.name = label
-            print(lf)
+            #print(lf)
     
     def add_heatmap(self, 
                     taxon2value, 
@@ -442,7 +444,8 @@ class EteTool():
                            show_values=False,
                            substract_min=False,
                            highlight_cutoff=False,
-                           highlight_reverse=False):
+                           highlight_reverse=False,
+                           max_value=False):
 
         if not show_values:
             self._add_header(header_name, column_add=0)
@@ -487,8 +490,10 @@ class EteTool():
                 lf.add_face(a, self.column_count, position="aligned")
             else:
                 barplot_column = 0
-
-            fraction_biggest = (float(value)/max(values_lists))*100
+            if not max_value:
+                fraction_biggest = (float(value)/max(values_lists))*100
+            else:
+                fraction_biggest = (float(value)/max_value)*100
             fraction_rest = 100-fraction_biggest
 
             if highlight_cutoff:
@@ -526,6 +531,19 @@ class EteTool():
          # todo
         pass
     
+    def remove_dots(self,):
+        
+        nstyle = NodeStyle()
+        nstyle["shape"] = "sphere"
+        nstyle["size"] = 0
+        nstyle["fgcolor"] = "darkred"
+
+
+        # Applies the same static style to all nodes in the tree. Note that,
+        # if "nstyle" is modified, changes will affect to all nodes
+        for n in self.tree.traverse():
+            n.set_style(nstyle)
+            
     def add_text_face(self,
                       taxon2text,
                       header_name,
@@ -545,6 +563,7 @@ class EteTool():
                 if color_scale:
                     n.background.color = value2color[taxon2text[lf.name]]
             else:
+                print(lf.name, "not in", taxon2text)
                 n = TextFace('-')
             n.margin_top = 1
             n.margin_right = 10
@@ -707,7 +726,8 @@ class EteToolCompact():
                            header_name,
                            color=False,
                            show_values=False,
-                           substract_min=False):
+                           substract_min=False,
+                           max_value=False):
 
         print("scale factor", self.text_scale)
 
@@ -715,6 +735,7 @@ class EteToolCompact():
             self._add_header(header_name, column_add=0)
         else:
             self._add_header(header_name, column_add=1)
+        
         
         values_lists = [float(i) for i in taxon2value.values()]
         
@@ -750,8 +771,10 @@ class EteToolCompact():
                 lf.add_face(a, self.column_count, position="aligned")
             else:
                 barplot_column = 0
-
-            fraction_biggest = (float(value)/max(values_lists))*100
+            if not max_value:
+                fraction_biggest = (float(value)/max(values_lists))*100
+            else:
+                fraction_biggest = (float(value)/max_value)*100
             fraction_rest = 100-fraction_biggest
 
             b = StackedBarFace([fraction_biggest, fraction_rest], 
@@ -821,3 +844,20 @@ class EteToolCompact():
         for i, lf in enumerate(self.tree.iter_leaves()):
             n = TextFace("")
             lf.add_face(n, 0)
+
+
+def get_newick(node, newick, parentdist, leaf_names):
+    '''
+    convert hierarchical clustering to newick format
+    '''
+    if node.is_leaf():
+        return "%s:%.2f%s" % (leaf_names[node.id], parentdist - node.dist, newick)
+    else:
+        if len(newick) > 0:
+            newick = "):%.2f%s" % (parentdist - node.dist, newick)
+        else:
+            newick = ");"
+        newick = get_newick(node.get_left(), newick, node.dist, leaf_names)
+        newick = get_newick(node.get_right(), ",%s" % (newick), node.dist, leaf_names)
+        newick = "(%s" % (newick)
+        return newick
