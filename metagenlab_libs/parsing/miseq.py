@@ -1,9 +1,37 @@
 import os
 import re
 import datetime
+import pandas
+
 
 def parse_sample_sheet(sheet_path):
     '''
+    NextSeq 2023.01
+    -----------------------------------------------------
+    [Header]
+    FileFormatVersion,2
+    RunName,IMU-COV-082-WGS-059
+    InstrumentPlatform,NextSeq1k2k
+    IndexOrientation,Forward
+
+    [Reads]
+    Read1Cycles,151
+    Read2Cycles,151
+    Index1Cycles,8
+    Index2Cycles,8
+
+    [Sequencing_Settings]
+    LibraryPrepKits,NexteraXT-CleanPlexFLEX
+
+    [BCLConvert_Settings]
+    SoftwareVersion,3.8.4
+    AdapterRead1,CTGTCTCTTATACACATCT
+    AdapterRead2,CTGTCTCTTATACACATCT
+    FastqCompressionFormat,gzip
+        
+    
+    MiSeq 2023.01
+    -----------------------------------------------------
     [Header]
     IEMFileVersion,4
     Investigator Name,Sebastien Aeby
@@ -38,12 +66,12 @@ def parse_sample_sheet(sheet_path):
     with open(sheet_path, 'r') as f:
         table_section = False
         reads_section = False
+        run_date = None
         sample_table = []
         read_len = []
         for row in f:
             if row.startswith("Date"):
                 run_date = row.rstrip().split(",")[1]
-                
                 run_date_split = re.split("\.|\/|-", run_date)
                 if len(run_date_split[2]) == 4:
                     # 13.02.2020
@@ -51,16 +79,15 @@ def parse_sample_sheet(sheet_path):
                 elif len(run_date_split[0]) == 4:
                     # 2020-02-13
                     run_date = f'{int(run_date_split[0])}-{int(run_date_split[1]):02d}-{int(run_date_split[2]):02d}'
-            if row.startswith("Experiment Name"):
+            if row.startswith("Experiment Name") or row.startswith("RunName"):
                 run_name = row.rstrip().split(",")[1]   
-            if row.startswith("Assay"):
-                assay = row.rstrip().split(",")[1]
-            if row.startswith("Library Prep Kit"):
+            if row.startswith("Library Prep Kit") or row.startswith("LibraryPrepKits") or row.startswith("Assay"):
                 assay = row.rstrip().split(",")[1]
             if row.strip() == '[Reads]':
                 reads_section = True
                 continue
-            if row.strip() == '[Data]':
+            if row.strip() in ['[Data]', '[Cloud_Data]']:
+                print("TABLE!")
                 table_section = True
                 continue
             # if empty line or start of a new section
@@ -71,7 +98,23 @@ def parse_sample_sheet(sheet_path):
                 sample_data = row.rstrip().split(",")
                 sample_table.append(sample_data)
             if reads_section:
-                read_len.append(row.rstrip())
+                if 'Read1Cycles' in row:
+                    read_len.append(row.rstrip().split(",")[1])
+                    
+                elif 'Index1Cycles' in row:
+                    continue
+                else:
+                    r_len = row.rstrip()
+                    if r_len.isdigit():
+                        read_len.append(r_len)
+    if len(sample_data) > 0:
+        df_samples = pandas.DataFrame(sample_table[1:], columns=sample_table[0])
+    if not run_date:
+        if 'ProjectName' in df_samples.columns:
+            # IMU-COV-082-WGS-059_2022-12-16T12_18_14_e49d087
+            run_date = re.match("[0-9]+-[0-9]+-[0-9]+",df_samples["ProjectName"][0].split(run_name)[1][1:]).group(0)
+        else:
+            run_date = None
     
     run2data["run_date"] = run_date
     run2data["run_name"] = run_name
@@ -82,8 +125,74 @@ def parse_sample_sheet(sheet_path):
     return run2data
 
 
+def parse_runinfo_nextseq():
+    '''
+<?xml version="1.0"?>
+<RunInfo Version="6">
+	<Run Id="221216_VL00235_33_AACFTVGM5" Number="33">
+		<Flowcell>AACFTVGM5</Flowcell>
+		<Instrument>VL00235</Instrument>
+		<Date>2022-12-16T12:49:26Z</Date>
+		<Reads>
+			<Read Number="1" NumCycles="151" IsIndexedRead="N" IsReverseComplement="N"/>
+			<Read Number="2" NumCycles="8" IsIndexedRead="Y" IsReverseComplement="N"/>
+			<Read Number="3" NumCycles="8" IsIndexedRead="Y" IsReverseComplement="Y"/>
+			<Read Number="4" NumCycles="151" IsIndexedRead="N" IsReverseComplement="N"/>
+		</Reads>
+		<FlowcellLayout LaneCount="1" SurfaceCount="2" SwathCount="4" TileCount="4">
+			<TileSet TileNamingConvention="FourDigit">
+				<Tiles>
+					<Tile>1_1101</Tile>
+					<Tile>1_1102</Tile>
+					<Tile>1_1103</Tile>
+					<Tile>1_1104</Tile>
+					<Tile>1_1201</Tile>
+					<Tile>1_1202</Tile>
+					<Tile>1_1203</Tile>
+					<Tile>1_1204</Tile>
+					<Tile>1_1301</Tile>
+					<Tile>1_1302</Tile>
+					<Tile>1_1303</Tile>
+					<Tile>1_1304</Tile>
+					<Tile>1_1401</Tile>
+					<Tile>1_1402</Tile>
+					<Tile>1_1403</Tile>
+					<Tile>1_1404</Tile>
+					<Tile>1_2101</Tile>
+					<Tile>1_2102</Tile>
+					<Tile>1_2103</Tile>
+					<Tile>1_2104</Tile>
+					<Tile>1_2201</Tile>
+					<Tile>1_2202</Tile>
+					<Tile>1_2203</Tile>
+					<Tile>1_2204</Tile>
+					<Tile>1_2301</Tile>
+					<Tile>1_2302</Tile>
+					<Tile>1_2303</Tile>
+					<Tile>1_2304</Tile>
+					<Tile>1_2401</Tile>
+					<Tile>1_2402</Tile>
+					<Tile>1_2403</Tile>
+					<Tile>1_2404</Tile>
+				</Tiles>
+			</TileSet>
+		</FlowcellLayout>
+		<ImageDimensions Width="8208" Height="5541"/>
+		<ImageChannels>
+			<Name>green</Name>
+			<Name>blue</Name>
+		</ImageChannels>
+	</Run>
+</RunInfo>
+
+    
+    '''
+
+
+
 def parse_runinfo(runinfo_path):
     '''
+    MiSeq rininfo file
 <?xml version="1.0"?>
 <RunParameters xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <EnableCloud>true</EnableCloud>
@@ -175,3 +284,74 @@ def parse_runinfo(runinfo_path):
     run2data["path"] = os.path.dirname(runinfo_path)
     
     return run2data
+
+def format_date(datestr):
+    from dateutil import parser as dateutilparser
+    d = dateutilparser.parse(datestr)
+    val = d.strftime("%Y-%m-%d")
+    return val
+
+def parse_runparemeters(runparameters_path):
+    
+    import xml.etree.ElementTree as ET
+    
+    
+    root = ET.parse(runparameters_path).getroot()
+    
+    synonyms = {"FlowcellRFIDTag": "Flowcell", "Setup": ""}
+    
+    parameters = { 'NextSeq': ["InstrumentName",
+                               "InstrumentType",
+                               "InstrumentSerialNumber",
+                               "FlowCellSerialNumber",
+                               "FlowCellExpirationDate",
+                               "FlowCellLotNumber", 
+                               "FlowCellVersion",
+                               "FlowCellMode", 
+                               "RunElapsedTime", 
+                               "ApplicationName"]
+                  
+                  , 'MiSeq': [("FlowcellRFIDTag", ["SerialNumber", "PartNumber", "ExpirationDate", "LotNumber"]), 
+                              ("Setup", ["ApplicationName"]), 
+                              "LibraryPrepKit",
+                              "IndexKit"]
+    }
+    
+    data = {}
+    
+    for machine in parameters:
+        for parameter in parameters[machine]:
+            print(type(parameter), parameter)
+            if isinstance(parameter, str):
+                if parameter in synonyms:
+                    synonym = synonyms[parameter]
+                else:
+                    synonym = parameter
+                try:
+                    val = root.find(parameter).text
+                    if "Date" in parameter:
+                        val = format_date(val)
+                    data[synonym] = val
+                except AttributeError:
+                    pass
+            if isinstance(parameter, tuple):
+                if parameter[0] in synonyms:
+                    synonym = synonyms[parameter[0]]
+                else:
+                    synonym = parameter[0]  
+                match = root.find(parameter[0])
+                for subparam in parameter[1]:
+                    print("subparam", subparam)
+                    try:
+                        val = match.find(subparam).text
+                        if "Date" in subparam:
+                            val = format_date(val)
+                        data[f"{synonym}{subparam}"] = val
+                    except:
+                        pass
+
+    # add MiSeq Manually
+    if 'InstrumentType' not in data and len(data) > 0:
+        data["InstrumentType"] = 'MiSeq'
+    
+    return data
