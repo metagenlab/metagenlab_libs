@@ -59,7 +59,6 @@ setup(
 
     install_requires=['matplotlib', 
                       'ete3>=3', 
-                      'biopython>=1.77', 
                       'argparse',
                       'PyQt5'],
     
