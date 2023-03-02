@@ -1,5 +1,5 @@
 {% set name = "metagenlab_libs" %}
-{% set version = "1.0.1" %}
+{% set version = "1.0.2" %}
 
 package:
       name: {{ name|lower }}
@@ -7,12 +7,12 @@ package:
 
 source:
     url: https://github.com/metagenlab/metagenlab_libs/archive/refs/tags/{{version}}.tar.gz
-    sha256: e51c1291008178a3c0940bec54c51b00e55668375e99985dcd737c5ae791d175 
+    sha256: 813491bc262507ec017fbf0c7f61c0432944bf7232b29f2316d3b6717893a40a 
 
 build:
   number: 0
   noarch: python
-  script: {{ PYTHON }} -m pip install . chlamdb -vv
+  script: {{ PYTHON }} -m pip install . -vv
 
 tests:
   imports:
@@ -28,5 +28,4 @@ requirements:
     - python
     - matplotlib
     - ete3>=3
-    - argparse
     - biopython>=1.77
