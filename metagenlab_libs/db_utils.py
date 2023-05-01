@@ -1288,7 +1288,7 @@ class DB:
             "SELECT entry.taxon_id, txn_name.name,  "
             f" CASE WHEN EXISTS ({has_plasmid_query}) THEN 1 ELSE 0 END "
             "FROM bioentry AS entry "
-            "INNER JOIN bioentry_qualifier_value AS orga " 
+            "INNER JOIN bioentry_qualifier_value AS orga ON entry.bioentry_id=orga.bioentry_id " 
             "INNER JOIN taxon_name as txn_name ON entry.taxon_id=txn_name.taxon_id "
             "INNER JOIN term AS orga_term ON orga.term_id=orga_term.term_id "
             " AND orga_term.name=\"organism\" "
