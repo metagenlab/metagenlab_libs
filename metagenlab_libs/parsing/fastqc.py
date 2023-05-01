@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import pandas
 
 class FastQCParser():
     
@@ -14,6 +15,8 @@ class FastQCParser():
         parsed_modules = [self._parse_module(n) for n in range(0, len(self.modules))]
         
         self.fastqc_modules = {i[0]:i[1] for i in parsed_modules if i is not None}
+        
+        self.fastqc_modules["Basic Statistics"].set_index(self.fastqc_modules["Basic Statistics"].columns[0], inplace=True)
         
     def _parse_module(self, index):
         import pandas 
@@ -34,7 +37,22 @@ class FastQCParser():
         if len(values) > 0:
             df = pandas.DataFrame(values, columns=header)
             # set first column as index
-            df = df.set_index(df.columns[0])
+            # df = df.set_index(df.columns[0])
+            # convert to float if possible
+            for col in df.columns:
+                try:
+                    df[col] = df[col].astype(float)
+                except:
+                    pass
             return module_name, df
         else:
             return None
+
+
+    def get_q_qual_rate(self, q_value):
+        
+        df = self.fastqc_modules["Per sequence quality scores"]
+        total_bases = df["Count"].sum() 
+        q_rate = round(df.query(f"Quality >= {q_value}")["Count"].sum() / total_bases, 4)
+
+        return q_rate

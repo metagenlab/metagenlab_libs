@@ -119,7 +119,9 @@ def parse_sample_sheet(sheet_path):
     run2data["run_date"] = run_date
     run2data["run_name"] = run_name
     run2data["assay"] = assay
-    run2data["reads"] = read_len
+    if isinstance(read_len, list):
+        read_len = read_len[0]
+    run2data["NumCycles"] = read_len
     run2data["path"] = os.path.dirname(sheet_path)
     
     return run2data
@@ -281,7 +283,6 @@ def parse_runinfo(runinfo_path):
     run2data["run_name"] = run_name
     run2data["assay"] = None
     run2data["reads"] = read_length
-    run2data["path"] = os.path.dirname(runinfo_path)
     
     return run2data
 
@@ -294,7 +295,6 @@ def format_date(datestr):
 def parse_runparemeters(runparameters_path):
     
     import xml.etree.ElementTree as ET
-    
     
     root = ET.parse(runparameters_path).getroot()
     
@@ -321,7 +321,6 @@ def parse_runparemeters(runparameters_path):
     
     for machine in parameters:
         for parameter in parameters[machine]:
-            print(type(parameter), parameter)
             if isinstance(parameter, str):
                 if parameter in synonyms:
                     synonym = synonyms[parameter]
