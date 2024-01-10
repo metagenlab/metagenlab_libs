@@ -7,7 +7,7 @@
 # ---------------------------------------------------------------------------
 
 from Bio import SeqIO
-from Bio.SeqUtils import GC, GC_skew
+from Bio.SeqUtils import gc_fraction, GC_skew
 import pylab
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
@@ -17,7 +17,7 @@ def circos_gc_var(record, windows=1000, shift=0):
     :param record:
     :return: circos string with difference as compared to the average GC
     ex: average = 32
-        GC(seq[3000:4000]) = 44
+        gc_fraction(seq[3000:4000]) = 44
         diff = 44 - 32 = 12%
 
 
@@ -26,7 +26,7 @@ def circos_gc_var(record, windows=1000, shift=0):
     '''
     circos_string = ''
     from Bio.SeqFeature import FeatureLocation
-    average_gc = GC(record.seq)
+    average_gc = gc_fraction(record.seq)
     gap_locations = []
     for feature in record.features:
         if feature.type == "assembly_gap":
@@ -59,12 +59,12 @@ def circos_gc_var(record, windows=1000, shift=0):
             for i in range(0, len(seq), windows_range):
                 start = i
                 stop = i + windows
-                #gc = ((GC(record.seq[start:stop])/average_gc) - 1)*100
+                #gc = ((gc_fraction(record.seq[start:stop])/average_gc) - 1)*100
                 if 'n' in record.seq[start:stop]:
                     continue
                 if 'N' in record.seq[start:stop]:
                     continue
-                gc = GC(record.seq[start:stop]) - average_gc
+                gc = gc_fraction(record.seq[start:stop]) - average_gc
                 if stop > len(seq):
                     stop = len(seq)
                     #if stop - start < 200:
@@ -78,8 +78,8 @@ def circos_gc_var(record, windows=1000, shift=0):
         for i in range(0, len(seq), windows):
             start = i
             stop = i + windows
-            #gc = ((GC(record.seq[start:stop])/average_gc) - 1)*100
-            gc = GC(record.seq[start:stop]) - average_gc
+            #gc = ((gc_fraction(record.seq[start:stop])/average_gc) - 1)*100
+            gc = gc_fraction(record.seq[start:stop]) - average_gc
             if stop > len(seq):
                 stop = len(seq)
                 if stop - start < 500:
@@ -94,14 +94,14 @@ def circos_gc_content(record, windows=1000, shift=0):
     :param record:
     :return: circos string with difference as compared to the average GC
     ex: average = 32
-        GC(seq[3000:4000]) = 44
+        gc_fraction(seq[3000:4000]) = 44
         diff = 44 - 32 = 12%
 
     UPDATE 12.06.2017: calculs based on complete (concatenated) sequence, then converted to draft contigs coords
     '''
     circos_string = ''
     from Bio.SeqFeature import FeatureLocation
-    average_gc = GC(record.seq)
+    average_gc = gc_fraction(record.seq)
     gap_locations = []
     for feature in record.features:
         if feature.type == "assembly_gap":
@@ -133,8 +133,8 @@ def circos_gc_content(record, windows=1000, shift=0):
             for i in range(0, len(seq), window_range):
                 start = i
                 stop = i + windows
-                #gc = ((GC(record.seq[start:stop])/average_gc) - 1)*100
-                gc = GC(record.seq[start:stop])
+                #gc = ((gc_fraction(record.seq[start:stop])/average_gc) - 1)*100
+                gc = gc_fraction(record.seq[start:stop])
                 if stop > len(seq):
 
                     stop = len(seq)
@@ -151,8 +151,8 @@ def circos_gc_content(record, windows=1000, shift=0):
         for i in range(0, len(seq), windows):
             start = i
             stop = i + windows
-            #gc = ((GC(record.seq[start:stop])/average_gc) - 1)*100
-            gc = GC(record.seq[start:stop])
+            #gc = ((gc_fraction(record.seq[start:stop])/average_gc) - 1)*100
+            gc = gc_fraction(record.seq[start:stop])
             if stop > len(seq):
                 stop = len(seq)
                 if stop - start < 500:
@@ -167,7 +167,7 @@ def circos_gc_skew(record, windows=1000, shift=0):
     :param record:
     :return: circos string with difference as compared to the average GC
     ex: average = 32
-        GC(seq[3000:4000]) = 44
+        gc_fraction(seq[3000:4000]) = 44
         diff = 44 - 32 = 12%
 
     NEW 12.06.2017: calculate GC based on whole sequence
@@ -235,7 +235,7 @@ def circos_gc_skew(record, windows=1000, shift=0):
             for i in range(0, len(values)):
                 start = i *windows
                 stop = start + windows
-                #gc = ((GC(record.seq[start:stop])/average_gc) - 1)*100
+                #gc = ((gc_fraction(record.seq[start:stop])/average_gc) - 1)*100
                 section_start = chr_start + start
                 section_end = chr_start + stop
                 circos_string += "%s %s %s %s\n" % (contig_name, section_start+shift, section_end+shift, values[i])
@@ -275,7 +275,7 @@ def circos_cumul_gc_skew(record, windows=1000, shift=0, initial=0):
     :param record:
     :return: circos string with difference as compared to the average GC
     ex: average = 32
-        GC(seq[3000:4000]) = 44
+        gc_fraction(seq[3000:4000]) = 44
         diff = 44 - 32 = 12%
 
     '''
@@ -314,7 +314,7 @@ def circos_cumul_gc_skew(record, windows=1000, shift=0, initial=0):
             for i in range(0, len(values)):
                 start = i *windows
                 stop = start + windows
-                #gc = ((GC(record.seq[start:stop])/average_gc) - 1)*100
+                #gc = ((gc_fraction(record.seq[start:stop])/average_gc) - 1)*100
                 section_start = chr_start + start
                 section_end = chr_start + stop
                 circos_string += "%s %s %s %s\n" % (contig_name, section_start+shift, section_end+shift, values[i])
@@ -352,10 +352,10 @@ def plot_contig_len(handle, out_name):
 def plot_GC_length(handle, out_name, xlim = False):
     pp = PdfPages(out_name)
     parsed_handle = [record for record in SeqIO.parse(handle, "fasta")]
-    gc_values = [GC(rec.seq)  for rec in parsed_handle]
+    gc_values = [gc_fraction(rec.seq)  for rec in parsed_handle]
     
     #for i in parsed_handle:
-    #    print i.id, GC(i.seq), len(i.seq)
+    #    print i.id, gc_fraction(i.seq), len(i.seq)
     #print len(gc_values)
     len_values = [len(rec.seq) for rec in parsed_handle]
     #print len(len_values)
@@ -381,7 +381,7 @@ def plot_GC_length(handle, out_name, xlim = False):
 
 def gc_values(handle):
     parsed_handle = [record for record in SeqIO.parse(handle, "fasta")]
-    gc_values = [GC(rec.seq)  for rec in parsed_handle]
+    gc_values = [gc_fraction(rec.seq)  for rec in parsed_handle]
     seq_ids = [rec.id  for rec in parsed_handle]
     for i in range(0, len(seq_ids)):
         print (seq_ids[i] +"\t"+ str(gc_values[i]))
@@ -390,7 +390,7 @@ def whole_gc(records):
     seq = ""
     for record in records:
         seq+= record.seq
-    return GC(seq)
+    return gc_fraction(seq)
 
 
 

@@ -2,10 +2,9 @@ import os
 import sys
 
 from BioSQL import BioSeqDatabase
-from Bio.SeqRecord import SeqRecord #added
+from Bio.SeqRecord import SeqRecord  # added
 
 from Bio.Seq import Seq
-from Bio.SeqUtils import GC
 
 import sqlite3
 import pandas as pd
