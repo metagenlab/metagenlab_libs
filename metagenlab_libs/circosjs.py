@@ -244,10 +244,6 @@ class CircosJs():
         '''
         from Bio.SeqUtils import gc_fraction
         
-        ordered_seqs = [bioentry.seq for n,bioentry in bioentry_df.iterrows()]
-        concat_seq = ''.join(ordered_seqs)
-        average_gc = gc_fraction(concat_seq) * 100.
-        
         linedata_data = []
         for index, bientry in bioentry_df.iterrows():
             for i in range(0, len(bientry.seq), windows):
