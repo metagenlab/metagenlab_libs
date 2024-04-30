@@ -81,7 +81,7 @@ def parse_sample_sheet(sheet_path):
                     run_date = f'{int(run_date_split[0])}-{int(run_date_split[1]):02d}-{int(run_date_split[2]):02d}'
             if row.startswith("Experiment Name") or row.startswith("RunName"):
                 run_name = row.rstrip().split(",")[1]   
-            if row.startswith("Library Prep Kit") or row.startswith("LibraryPrepKits") or row.startswith("Assay"):
+            if row.startswith("Library Prep Kit") or row.startswith("LibraryPrepKit") or row.startswith("Assay"):
                 assay = row.rstrip().split(",")[1]
             if row.strip() == '[Reads]':
                 reads_section = True
