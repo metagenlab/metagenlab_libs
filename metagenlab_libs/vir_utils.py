@@ -6,7 +6,6 @@ import pandas
 
 from BioSQL import BioSeqDatabase
 from Bio import SeqIO
-from Bio.SeqUtils import GC
 
 import sqlite3
 

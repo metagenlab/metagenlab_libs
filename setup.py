@@ -38,7 +38,6 @@ setup(
         # These classifiers are *not* checked by 'pip install'. See instead
         # 'python_requires' below.
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
     ],
@@ -59,7 +58,7 @@ setup(
 
     install_requires=['matplotlib', 
                       'ete3>=3', 
-                      'biopython>=1.77', 
+                      'biopython>=1.8',
                       'argparse'],
                       #'PyQt5'],
     
